@@ -4,7 +4,7 @@ use std::str::FromStr;
 use winreg::HKEY;
 use winreg::enums::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub enum Scope {
     User,
     Machine,
@@ -128,7 +128,7 @@ pub fn restart_explorer() {
         .arg("/im")
         .arg("explorer.exe")
         .spawn();
-    std::thread::sleep(std::time::Duration::from_millis(2000));
+    std::thread::sleep(std::time::Duration::from_millis(1000));
     let _ = Command::new("explorer.exe").spawn();
 }
 

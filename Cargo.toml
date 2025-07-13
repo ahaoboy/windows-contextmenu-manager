@@ -1,0 +1,49 @@
+[package]
+name = "wcm"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Windows ContextMenu Manager"
+repository = "https://github.com/ahaoboy/windows-contextmenu-manager"
+homepage = "https://github.com/ahaoboy/windows-contextmenu-manager"
+authors = ["ahaoboy"]
+
+[features]
+cli = ["clap"]
+
+[[bin]]
+required-features = ["cli"]
+name = "wcm"
+
+[dependencies]
+clap = { version = "4", features = ["derive"], optional = true }
+winreg = "0.55"
+anyhow = "1"
+tokio = { version = "1", features = ["full"] }
+quick-xml = "0.38"
+futures = "0.3"
+thiserror = "2"
+serde = "1"
+serde_derive = "1.0"
+serde-xml-rs = { version = "0.8" }
+serde-appxmanifest = "0.1"
+uuid = { version = "1", features = ["v4", "serde"] }
+windows = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Management_Deployment",
+  "ApplicationModel",
+] }
+
+
+[profile.release]
+debug = false
+lto = true
+strip = true
+opt-level = 3
+codegen-units = 1
+
+[profile.bloaty]
+debug = true
+lto = false
+strip = false
+inherits = 'release'

@@ -212,7 +212,7 @@ pub fn list(scope: Scope) -> Vec<MenuItem> {
 
                     v.push(MenuItem {
                         enabled: !blocks.contains(&ty.clsid),
-                        id: id.clone(),
+                        id: ty.clsid.clone(),
                         name: display_name.clone(),
                         info,
                     });

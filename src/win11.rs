@@ -1,5 +1,5 @@
-use crate::Scope;
 use crate::{MenuItem, MenuItemInfo};
+use crate::{Scope, TypeItem};
 use serde_xml_rs::from_str;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -79,7 +79,7 @@ struct Ext {
     display_name: String,
     publisher_display_name: String,
     description: String,
-    types: Vec<String>,
+    types: Vec<TypeItem>,
 }
 
 fn get_info(manifest_path: &PathBuf) -> Option<Ext> {
@@ -98,7 +98,11 @@ fn get_info(manifest_path: &PathBuf) -> Option<Ext> {
                         i.file_explorer_context_menus
                             .item_type
                             .iter()
-                            .map(|v| v.ty.clone())
+                            .map(|v| TypeItem {
+                                ty: v.ty.clone(),
+                                id: v.verb.id.clone(),
+                                clsid: v.verb.clsid.clone(),
+                            })
                     })
                     .collect::<Vec<_>>();
 
@@ -158,32 +162,61 @@ pub fn list(scope: Scope) -> Vec<MenuItem> {
                 "AppxManifest.xml"
             };
 
-            let family_name = pkg.Id().and_then(|i| i.FamilyName()).map(|i| i.to_string()).unwrap_or_default();
-            let full_name = pkg.Id().and_then(|i| i.FullName()).map(|i| i.to_string()).unwrap_or_default();
+            let family_name = pkg
+                .Id()
+                .and_then(|i| i.FamilyName())
+                .map(|i| i.to_string())
+                .unwrap_or_default();
+            let full_name = pkg
+                .Id()
+                .and_then(|i| i.FullName())
+                .map(|i| i.to_string())
+                .unwrap_or_default();
+            let display_name = pkg.DisplayName().map(|i| i.to_string()).unwrap_or_default();
 
             let install_path = std::path::PathBuf::from(pkg.InstalledPath().unwrap().to_string());
             let manifest_path = install_path.join(manifest_name);
-            if let Some(ext) = get_info(&manifest_path) {
+            if let Some(Ext {
+                id,
+                display_name,
+                publisher_display_name,
+                description,
+                types,
+            }) = get_info(&manifest_path)
+            {
                 let icon = pkg
                     .Logo()
                     .ok()
                     .and_then(|logo| logo.RawUri().ok())
                     .and_then(|p| std::fs::read(p.to_string()).ok());
-                let info = Some(MenuItemInfo {
-                    icon,
-                    publisher_display_name: ext.publisher_display_name,
-                    description: ext.description,
-                    types: ext.types,
-                    install_path: install_path.to_string_lossy().to_string(),
-                    family_name,
-                    full_name,
-                });
-                v.push(MenuItem {
-                    enabled: !blocks.contains(&ext.id),
-                    id: ext.id,
-                    name: ext.display_name,
-                    info,
-                });
+
+                let mut visit: HashSet<String> = HashSet::new();
+                for ty in types.clone() {
+                    if visit.contains(&ty.clsid) {
+                        continue;
+                    }
+                    visit.insert(ty.clsid.clone());
+                    let info = Some(MenuItemInfo {
+                        icon: icon.clone(),
+                        publisher_display_name: publisher_display_name.clone(),
+                        description: description.clone(),
+                        types: types
+                            .iter()
+                            .filter(|i| i.clsid == ty.clsid)
+                            .cloned()
+                            .collect(),
+                        install_path: install_path.to_string_lossy().to_string(),
+                        family_name: family_name.clone(),
+                        full_name: family_name.clone(),
+                    });
+
+                    v.push(MenuItem {
+                        enabled: !blocks.contains(&ty.clsid),
+                        id: ty.clsid.clone(),
+                        name: display_name.clone(),
+                        info,
+                    });
+                }
             }
         }
     }

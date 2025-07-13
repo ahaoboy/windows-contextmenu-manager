@@ -53,11 +53,18 @@ pub struct MenuItem {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub struct TypeItem {
+    pub id: String,
+    pub ty: String,
+    pub clsid: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct MenuItemInfo {
     pub icon: Option<Vec<u8>>,
     pub publisher_display_name: String,
     pub description: String,
-    pub types: Vec<String>,
+    pub types: Vec<TypeItem>,
     pub install_path: String,
     pub family_name: String,
     pub full_name: String,

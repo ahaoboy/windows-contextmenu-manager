@@ -111,7 +111,8 @@ fn main() {
                 let v = Type::Win11.list(scope);
                 for i in v {
                     let icon = if i.enabled { "✅" } else { "❌" };
-                    println!("{icon} {} {}", i.id, i.name);
+
+                    println!("{icon} {} {}", i.id, i.name,);
                 }
             }
         },

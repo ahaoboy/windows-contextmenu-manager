@@ -76,7 +76,7 @@ impl Blocks {
 
 struct Ext {
     id: String,
-    display_name: String,
+    // display_name: String,
     publisher_display_name: String,
     description: String,
     types: Vec<TypeItem>,
@@ -85,7 +85,7 @@ struct Ext {
 fn get_info(manifest_path: &PathBuf) -> Option<Ext> {
     let xml = std::fs::read_to_string(manifest_path).ok()?;
     let package = from_str::<serde_appxmanifest::Package>(&xml).ok()?;
-    let display_name = package.properties.display_name;
+    // let display_name = package.properties.display_name;
     let publisher_display_name = package.properties.publisher_display_name;
     for app in package.applications.application {
         if let Some(ext) = app.extensions {
@@ -115,7 +115,7 @@ fn get_info(manifest_path: &PathBuf) -> Option<Ext> {
                     {
                         return Some(Ext {
                             id: ty.verb.clsid.clone(),
-                            display_name,
+                            // display_name,
                             publisher_display_name,
                             description,
                             types,
@@ -131,7 +131,7 @@ fn get_info(manifest_path: &PathBuf) -> Option<Ext> {
                     {
                         return Some(Ext {
                             id: i.id.clone(),
-                            display_name: ty.display_name.clone(),
+                            // display_name: ty.display_name.clone(),
                             publisher_display_name,
                             description,
                             types: vec![],
@@ -178,7 +178,7 @@ pub fn list(scope: Scope) -> Vec<MenuItem> {
             let manifest_path = install_path.join(manifest_name);
             if let Some(Ext {
                 id,
-                display_name,
+                // display_name,
                 publisher_display_name,
                 description,
                 types,
@@ -207,12 +207,12 @@ pub fn list(scope: Scope) -> Vec<MenuItem> {
                             .collect(),
                         install_path: install_path.to_string_lossy().to_string(),
                         family_name: family_name.clone(),
-                        full_name: family_name.clone(),
+                        full_name: full_name.clone(),
                     });
 
                     v.push(MenuItem {
                         enabled: !blocks.contains(&ty.clsid),
-                        id: ty.clsid.clone(),
+                        id: id.clone(),
                         name: display_name.clone(),
                         info,
                     });

@@ -401,7 +401,7 @@ pub fn list() -> Vec<MenuItem> {
                 id: i.0,
                 name: i.1.name,
                 enabled: i.1.enabled,
-                icon: None,
+                info: None,
             });
         }
     };

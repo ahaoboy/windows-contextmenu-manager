@@ -1,20 +1,108 @@
-use std::path::PathBuf;
-
+use crate::Scope;
+use crate::{MenuItem, MenuItemInfo};
 use serde_xml_rs::from_str;
-use winreg::{RegKey, enums::HKEY_CLASSES_ROOT};
-
-use crate::MenuItem;
-use crate::blocks::{BlockScope, Blocks};
-
+use std::collections::HashSet;
+use std::path::PathBuf;
 use windows::Management::Deployment::PackageManager;
 use windows::core::HSTRING;
+use winreg::enums::*;
+use winreg::{RegKey, enums::HKEY_CLASSES_ROOT};
 
-fn get_info(manifest_path: &PathBuf) -> Option<(String, String)> {
+const REG_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked";
+
+pub struct Blocks {
+    pub scope: Scope,
+    pub items: HashSet<String>,
+}
+
+impl Blocks {
+    pub fn new(scope: Scope) -> Self {
+        let hive = scope.to_hive();
+        let base_key = RegKey::predef(hive);
+
+        let items = if let Ok(sub_key) = base_key.open_subkey(REG_KEY) {
+            sub_key
+                .enum_values()
+                .filter_map(|result| result.ok().map(|(name, _)| Self::from_reg_name(&name)))
+                .collect()
+        } else {
+            HashSet::new()
+        };
+
+        Self { scope, items }
+    }
+
+    pub fn add(&mut self, id: &str) -> anyhow::Result<()> {
+        let hive = self.scope.to_hive();
+        let base_key = RegKey::predef(hive);
+
+        let sub_key = base_key.create_subkey(REG_KEY)?.0;
+        sub_key.set_value(Self::to_reg_name(id), &"")?;
+        self.items.insert(id.to_string());
+
+        Ok(())
+    }
+
+    pub fn remove(&mut self, id: &str) -> anyhow::Result<()> {
+        if !self.items.contains(id) {
+            return Ok(());
+        }
+
+        let hive = self.scope.to_hive();
+        let base_key = RegKey::predef(hive);
+
+        if let Ok(sub_key) = base_key.open_subkey_with_flags(REG_KEY, KEY_WRITE) {
+            let _ = sub_key.delete_value(Self::to_reg_name(id));
+            self.items.remove(id);
+        } else {
+            self.items.clear();
+        }
+
+        Ok(())
+    }
+
+    pub fn contains(&self, id: &str) -> bool {
+        self.items.contains(id)
+    }
+
+    fn to_reg_name(val: &str) -> String {
+        format!("{{{val}}}")
+    }
+
+    fn from_reg_name(val: &str) -> String {
+        val.trim_matches('{').trim_matches('}').to_string()
+    }
+}
+
+struct Ext {
+    id: String,
+    display_name: String,
+    publisher_display_name: String,
+    description: String,
+    types: Vec<String>,
+}
+
+fn get_info(manifest_path: &PathBuf) -> Option<Ext> {
     let xml = std::fs::read_to_string(manifest_path).ok()?;
     let package = from_str::<serde_appxmanifest::Package>(&xml).ok()?;
+    let display_name = package.properties.display_name;
+    let publisher_display_name = package.properties.publisher_display_name;
+
     for app in package.applications.application {
         if let Some(ext) = app.extensions {
+            let description = app.visual_elements.description;
+
             if let Some(desktop_extension) = ext.desktop_extension {
+                let types = desktop_extension
+                    .iter()
+                    .flat_map(|i| {
+                        i.file_explorer_context_menus
+                            .item_type
+                            .iter()
+                            .map(|v| v.ty.clone())
+                    })
+                    .collect::<Vec<_>>();
+
                 for i in desktop_extension {
                     if let Some(ty) = i
                         .file_explorer_context_menus
@@ -22,7 +110,13 @@ fn get_info(manifest_path: &PathBuf) -> Option<(String, String)> {
                         .iter()
                         .find(|i| i.ty == "Directory" || i.ty == "*")
                     {
-                        return Some((ty.verb.id.clone(), ty.verb.clsid.clone()));
+                        return Some(Ext {
+                            id: ty.verb.clsid.clone(),
+                            display_name,
+                            publisher_display_name,
+                            description,
+                            types,
+                        });
                     }
                 }
             }
@@ -32,7 +126,13 @@ fn get_info(manifest_path: &PathBuf) -> Option<(String, String)> {
                     if let Some(ty) = i.com_server.and_then(|i| i.surrogate_server)
                         && let Some(i) = ty.com_class.first()
                     {
-                        return Some((i.id.to_owned(), ty.display_name));
+                        return Some(Ext {
+                            id: i.id.clone(),
+                            display_name: ty.display_name.clone(),
+                            publisher_display_name,
+                            description,
+                            types: vec![],
+                        });
                     }
                 }
             }
@@ -48,9 +148,8 @@ pub fn list() -> Vec<MenuItem> {
     let package_manager = PackageManager::new().unwrap();
 
     let mut v = vec![];
-    let scope = BlockScope::User;
-    let mut blocks = Blocks::get_scope(scope);
-    blocks.load();
+    let scope = Scope::User;
+    let blocks = Blocks::new(scope);
 
     for full_name in names {
         if let Ok(pkg) = package_manager.FindPackageByPackageFullName(&HSTRING::from(&full_name)) {
@@ -63,19 +162,23 @@ pub fn list() -> Vec<MenuItem> {
 
             let install_path = std::path::PathBuf::from(pkg.InstalledPath().unwrap().to_string());
             let manifest_path = install_path.join(manifest_name);
-            if let Some((name, id)) = get_info(&manifest_path) {
+            if let Some(ext) = get_info(&manifest_path) {
                 let icon = pkg
                     .Logo()
                     .ok()
                     .and_then(|logo| logo.RawUri().ok())
-                    .and_then(|p| {
-                        std::fs::read(p.to_string()).ok()
-                    });
-                v.push(MenuItem {
-                    enabled: !blocks.contains(&id),
-                    id,
-                    name,
+                    .and_then(|p| std::fs::read(p.to_string()).ok());
+                let info = Some(MenuItemInfo {
                     icon,
+                    publisher_display_name: ext.publisher_display_name,
+                    description: ext.description,
+                    types: ext.types,
+                });
+                v.push(MenuItem {
+                    enabled: !blocks.contains(&ext.id),
+                    id: ext.id,
+                    name: ext.display_name,
+                    info,
                 });
             }
         }
@@ -84,14 +187,12 @@ pub fn list() -> Vec<MenuItem> {
     v
 }
 
-pub fn enable(id: &str, scope: BlockScope) -> Result<(), anyhow::Error> {
-    let mut blocks = Blocks::get_scope(scope);
-    blocks.load();
+pub fn enable(id: &str, scope: Scope) -> Result<(), anyhow::Error> {
+    let mut blocks = Blocks::new(scope);
     blocks.remove(id)
 }
 
-pub fn disable(id: &str, scope: BlockScope) -> Result<(), anyhow::Error> {
-    let mut blocks = Blocks::get_scope(scope);
-    blocks.load();
+pub fn disable(id: &str, scope: Scope) -> Result<(), anyhow::Error> {
+    let mut blocks = Blocks::new(scope);
     blocks.add(id)
 }

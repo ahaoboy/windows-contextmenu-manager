@@ -1,17 +1,63 @@
-use crate::blocks::BlockScope;
 use serde::Serialize;
+use std::fmt;
+use std::str::FromStr;
+use winreg::HKEY;
+use winreg::enums::*;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Scope {
+    User,
+    Machine,
+}
+
+impl Scope {
+    pub fn to_hive(self) -> HKEY {
+        match self {
+            Scope::User => HKEY_CURRENT_USER,
+            Scope::Machine => HKEY_LOCAL_MACHINE,
+        }
+    }
+}
+impl fmt::Display for Scope {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Scope::User => write!(f, "user"),
+            Scope::Machine => write!(f, "machine"),
+        }
+    }
+}
+
+impl FromStr for Scope {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "user" => Ok(Scope::User),
+            "machine" => Ok(Scope::Machine),
+            _ => Err("Invalid scope string, expected 'user' or 'machine'"),
+        }
+    }
+}
 
 pub trait Manager {
     fn list(&self) -> Vec<MenuItem>;
-    fn disable(&self, id: &str, scope: BlockScope) -> Result<(), anyhow::Error>;
-    fn enable(&self, id: &str, scope: BlockScope) -> Result<(), anyhow::Error>;
+    fn disable(&self, id: &str, scope: Scope) -> Result<(), anyhow::Error>;
+    fn enable(&self, id: &str, scope: Scope) -> Result<(), anyhow::Error>;
 }
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct MenuItem {
     pub id: String,
     pub name: String,
     pub enabled: bool,
+    pub info: Option<MenuItemInfo>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub struct MenuItemInfo {
     pub icon: Option<Vec<u8>>,
+    pub publisher_display_name: String,
+    pub description: String,
+    pub types: Vec<String>,
 }
 
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
@@ -29,14 +75,14 @@ impl Manager for Type {
         }
     }
 
-    fn disable(&self, id: &str, scope: BlockScope) -> Result<(), anyhow::Error> {
+    fn disable(&self, id: &str, scope: Scope) -> Result<(), anyhow::Error> {
         match self {
             Type::Win10 => crate::win10::disable(id),
             Type::Win11 => crate::win11::disable(id, scope),
         }
     }
 
-    fn enable(&self, id: &str, scope: BlockScope) -> Result<(), anyhow::Error> {
+    fn enable(&self, id: &str, scope: Scope) -> Result<(), anyhow::Error> {
         match self {
             Type::Win10 => crate::win10::enable(id),
             Type::Win11 => crate::win11::enable(id, scope),
@@ -47,7 +93,6 @@ impl Manager for Type {
 use serde::Deserialize;
 use std::io::{self};
 use winreg::RegKey;
-use winreg::enums::*;
 
 const CLSID_PATH: &str =
     r"SOFTWARE\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32";

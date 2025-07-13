@@ -81,8 +81,8 @@ fn main() {
         Commands::Win11 { command } => match command {
             Win11Command::Enable { scope, id } => {
                 let scope = match scope.to_lowercase().as_str() {
-                    "user" => BlockScope::User,
-                    "machine" => BlockScope::Machine,
+                    "user" => Scope::User,
+                    "machine" => Scope::Machine,
                     _ => panic!("scope: user|machine"),
                 };
 
@@ -90,8 +90,8 @@ fn main() {
             }
             Win11Command::Disable { scope, id } => {
                 let scope = match scope.to_lowercase().as_str() {
-                    "user" => BlockScope::User,
-                    "machine" => BlockScope::Machine,
+                    "user" => Scope::User,
+                    "machine" => Scope::Machine,
                     _ => panic!("scope: user|machine"),
                 };
 

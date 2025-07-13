@@ -40,7 +40,7 @@ impl FromStr for Scope {
 }
 
 pub trait Manager {
-    fn list(&self) -> Vec<MenuItem>;
+    fn list(&self, scope: Scope) -> Vec<MenuItem>;
     fn disable(&self, id: &str, scope: Scope) -> Result<(), anyhow::Error>;
     fn enable(&self, id: &str, scope: Scope) -> Result<(), anyhow::Error>;
 }
@@ -68,10 +68,10 @@ pub enum Type {
 }
 
 impl Manager for Type {
-    fn list(&self) -> Vec<MenuItem> {
+    fn list(&self, scope: Scope) -> Vec<MenuItem> {
         match self {
             Type::Win10 => crate::win10::list(),
-            Type::Win11 => crate::win11::list(),
+            Type::Win11 => crate::win11::list(scope),
         }
     }
 

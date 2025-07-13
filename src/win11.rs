@@ -141,14 +141,13 @@ fn get_info(manifest_path: &PathBuf) -> Option<Ext> {
     None
 }
 
-pub fn list() -> Vec<MenuItem> {
+pub fn list(scope: Scope) -> Vec<MenuItem> {
     let hkcr = RegKey::predef(HKEY_CLASSES_ROOT);
     let subkey = hkcr.open_subkey("PackagedCom\\Package").unwrap();
     let names: Vec<_> = subkey.enum_keys().flat_map(|x| x.ok()).collect();
     let package_manager = PackageManager::new().unwrap();
 
     let mut v = vec![];
-    let scope = Scope::User;
     let blocks = Blocks::new(scope);
 
     for full_name in names {

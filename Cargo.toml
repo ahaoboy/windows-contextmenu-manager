@@ -19,14 +19,12 @@ name = "wcm"
 clap = { version = "4", features = ["derive"], optional = true }
 winreg = "0.55"
 anyhow = "1"
-tokio = { version = "1", features = ["full"] }
-quick-xml = "0.38"
 futures = "0.3"
 thiserror = "2"
 serde = "1"
 serde_derive = "1.0"
 serde-xml-rs = { version = "0.8" }
-serde-appxmanifest = "0.1"
+serde-appxmanifest = { version = "0.1", git = "https://github.com/ahaoboy/serde-appxmanifest" }
 uuid = { version = "1", features = ["v4", "serde"] }
 windows = { version = "0.61", features = [
   "Win32_Foundation",

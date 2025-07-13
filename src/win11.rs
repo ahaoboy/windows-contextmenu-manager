@@ -87,7 +87,6 @@ fn get_info(manifest_path: &PathBuf) -> Option<Ext> {
     let package = from_str::<serde_appxmanifest::Package>(&xml).ok()?;
     let display_name = package.properties.display_name;
     let publisher_display_name = package.properties.publisher_display_name;
-
     for app in package.applications.application {
         if let Some(ext) = app.extensions {
             let description = app.visual_elements.description;
@@ -159,6 +158,9 @@ pub fn list(scope: Scope) -> Vec<MenuItem> {
                 "AppxManifest.xml"
             };
 
+            let family_name = pkg.Id().and_then(|i| i.FamilyName()).map(|i| i.to_string()).unwrap_or_default();
+            let full_name = pkg.Id().and_then(|i| i.FullName()).map(|i| i.to_string()).unwrap_or_default();
+
             let install_path = std::path::PathBuf::from(pkg.InstalledPath().unwrap().to_string());
             let manifest_path = install_path.join(manifest_name);
             if let Some(ext) = get_info(&manifest_path) {
@@ -172,6 +174,9 @@ pub fn list(scope: Scope) -> Vec<MenuItem> {
                     publisher_display_name: ext.publisher_display_name,
                     description: ext.description,
                     types: ext.types,
+                    install_path: install_path.to_string_lossy().to_string(),
+                    family_name,
+                    full_name,
                 });
                 v.push(MenuItem {
                     enabled: !blocks.contains(&ext.id),

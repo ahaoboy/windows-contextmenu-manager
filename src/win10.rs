@@ -7,13 +7,13 @@ use std::collections::HashMap;
 
 use crate::MenuItem;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum MenuItemType {
     Shell,
     ShellEx,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Win10MenuItem {
     pub id: String,
     pub name: String,

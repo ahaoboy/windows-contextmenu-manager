@@ -58,6 +58,9 @@ pub struct MenuItemInfo {
     pub publisher_display_name: String,
     pub description: String,
     pub types: Vec<String>,
+    pub install_path: String,
+    pub family_name: String,
+    pub full_name: String,
 }
 
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]

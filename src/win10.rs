@@ -58,7 +58,7 @@ impl fmt::Display for MenuScene {
             MenuScene::Library => "Library",
         };
 
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 

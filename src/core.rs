@@ -21,8 +21,8 @@ impl Scope {
 impl fmt::Display for Scope {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Scope::User => write!(f, "user"),
-            Scope::Machine => write!(f, "machine"),
+            Scope::User => write!(f, "User"),
+            Scope::Machine => write!(f, "Machine"),
         }
     }
 }
@@ -31,10 +31,10 @@ impl FromStr for Scope {
     type Err = &'static str;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_ascii_lowercase().as_str() {
-            "user" => Ok(Scope::User),
-            "machine" => Ok(Scope::Machine),
-            _ => Err("Invalid scope string, expected 'user' or 'machine'"),
+        match s {
+            "User" => Ok(Scope::User),
+            "Machine" => Ok(Scope::Machine),
+            _ => Err("Invalid scope string, expected 'User' or 'Machine'"),
         }
     }
 }

@@ -40,6 +40,48 @@ pub enum MenuScene {
     Library,
 }
 
+use std::fmt;
+use std::str::FromStr;
+
+impl fmt::Display for MenuScene {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            MenuScene::File => "File",
+            MenuScene::Folder => "Folder",
+            MenuScene::Directory => "Directory",
+            MenuScene::Background => "Background",
+            MenuScene::Desktop => "Desktop",
+            MenuScene::Drive => "Drive",
+            MenuScene::AllObjects => "AllObjects",
+            MenuScene::Computer => "Computer",
+            MenuScene::RecycleBin => "RecycleBin",
+            MenuScene::Library => "Library",
+        };
+
+        write!(f, "{}", s)
+    }
+}
+
+impl FromStr for MenuScene {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "File" => Ok(MenuScene::File),
+            "Folder" => Ok(MenuScene::Folder),
+            "Directory" => Ok(MenuScene::Directory),
+            "Background" => Ok(MenuScene::Background),
+            "Desktop" => Ok(MenuScene::Desktop),
+            "Drive" => Ok(MenuScene::Drive),
+            "AllObjects" => Ok(MenuScene::AllObjects),
+            "Computer" => Ok(MenuScene::Computer),
+            "RecycleBin" => Ok(MenuScene::RecycleBin),
+            "Library" => Ok(MenuScene::Library),
+            _ => Err(()),
+        }
+    }
+}
+
 impl MenuScene {
     pub fn registry_path(&self) -> &'static str {
         match self {

@@ -1,5 +1,6 @@
 use anyhow::Ok;
 use clap::{Parser, Subcommand};
+use std::str::FromStr;
 use wcm::*;
 
 #[derive(Parser)]
@@ -36,8 +37,8 @@ enum Win10Command {
 #[derive(Subcommand)]
 enum Win11Command {
     List { scope: Scope },
-    Enable { scope: String, id: String },
-    Disable { scope: String, id: String },
+    Enable { scope: Scope, id: String },
+    Disable { scope: Scope, id: String },
 }
 
 fn main() {
@@ -83,22 +84,12 @@ fn main() {
         },
         Commands::Win11 { command } => match command {
             Win11Command::Enable { scope, id } => {
-                let scope = match scope.to_lowercase().as_str() {
-                    "user" => Scope::User,
-                    "machine" => Scope::Machine,
-                    _ => panic!("scope: user|machine"),
-                };
                 if scope == Scope::Machine && !is_admin::is_admin() {
                     panic!("You must run this command as an administrator.");
                 }
                 Type::Win11.enable(&id, scope);
             }
             Win11Command::Disable { scope, id } => {
-                let scope = match scope.to_lowercase().as_str() {
-                    "user" => Scope::User,
-                    "machine" => Scope::Machine,
-                    _ => panic!("scope: user|machine"),
-                };
                 if scope == Scope::Machine && !is_admin::is_admin() {
                     panic!("You must run this command as an administrator.");
                 }

@@ -75,7 +75,7 @@ impl Blocks {
 }
 
 struct Ext {
-    id: String,
+    // id: String,
     // display_name: String,
     publisher_display_name: String,
     description: String,
@@ -105,36 +105,30 @@ fn get_info(manifest_path: &PathBuf) -> Option<Ext> {
                             })
                     })
                     .collect::<Vec<_>>();
-
-                for i in desktop_extension {
-                    if let Some(ty) = i
-                        .file_explorer_context_menus
-                        .item_type
-                        .iter()
-                        .find(|i| i.ty == "Directory" || i.ty == "*")
-                    {
-                        return Some(Ext {
-                            id: ty.verb.clsid.clone(),
-                            // display_name,
-                            publisher_display_name,
-                            description,
-                            types,
-                        });
-                    }
-                }
+                return Some(Ext {
+                    publisher_display_name,
+                    description,
+                    types,
+                });
             }
 
             if let Some(com_extension) = ext.com_extension {
-                for i in com_extension {
-                    if let Some(ty) = i.com_server.and_then(|i| i.surrogate_server)
-                        && let Some(i) = ty.com_class.first()
-                    {
+                for com_ext in com_extension {
+                    if let Some(ty) = com_ext.com_server.and_then(|i| i.surrogate_server) {
+                        let types = ty
+                            .com_class
+                            .iter()
+                            .map(|c| TypeItem {
+                                ty: com_ext.category.clone(),
+                                id: c.id.clone(),
+                                clsid: c.id.clone(),
+                            })
+                            .collect::<Vec<_>>();
+
                         return Some(Ext {
-                            id: i.id.clone(),
-                            // display_name: ty.display_name.clone(),
                             publisher_display_name,
                             description,
-                            types: vec![],
+                            types,
                         });
                     }
                 }
@@ -177,7 +171,7 @@ pub fn list(scope: Scope) -> Vec<MenuItem> {
             let install_path = std::path::PathBuf::from(pkg.InstalledPath().unwrap().to_string());
             let manifest_path = install_path.join(manifest_name);
             if let Some(Ext {
-                id,
+                // id,
                 // display_name,
                 publisher_display_name,
                 description,

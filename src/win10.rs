@@ -1,11 +1,11 @@
+use crate::MenuItem;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::fmt;
+use std::str::FromStr;
 use uuid::Uuid;
 use winreg::RegKey;
 use winreg::enums::*;
-
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-
-use crate::MenuItem;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum MenuItemType {
@@ -27,95 +27,111 @@ pub struct Win10MenuItem {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum MenuScene {
+pub enum Scene {
     File,
     Folder,
     Directory,
     Background,
-    Desktop,
+    DesktopBackground,
     Drive,
     AllObjects,
     Computer,
     RecycleBin,
     Library,
+    LibraryBackground,
+    User,
+    Uwp,
+    SystemFileAssociations,
+    Unknown,
 }
 
-use std::fmt;
-use std::str::FromStr;
-
-impl fmt::Display for MenuScene {
+impl fmt::Display for Scene {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
-            MenuScene::File => "File",
-            MenuScene::Folder => "Folder",
-            MenuScene::Directory => "Directory",
-            MenuScene::Background => "Background",
-            MenuScene::Desktop => "Desktop",
-            MenuScene::Drive => "Drive",
-            MenuScene::AllObjects => "AllObjects",
-            MenuScene::Computer => "Computer",
-            MenuScene::RecycleBin => "RecycleBin",
-            MenuScene::Library => "Library",
+            Scene::File => "File",
+            Scene::Folder => "Folder",
+            Scene::Directory => "Directory",
+            Scene::Background => "Background",
+            Scene::DesktopBackground => "DesktopBackground",
+            Scene::Drive => "Drive",
+            Scene::AllObjects => "AllObjects",
+            Scene::Computer => "Computer",
+            Scene::RecycleBin => "RecycleBin",
+            Scene::Library => "Library",
+            Scene::LibraryBackground => "LibraryBackground",
+            Scene::User => "User",
+            Scene::Uwp => "Uwp",
+            Scene::SystemFileAssociations => "SystemFileAssociations",
+            Scene::Unknown => "Unknown",
         };
 
         write!(f, "{s}")
     }
 }
 
-impl FromStr for MenuScene {
+impl FromStr for Scene {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "File" => Ok(MenuScene::File),
-            "Folder" => Ok(MenuScene::Folder),
-            "Directory" => Ok(MenuScene::Directory),
-            "Background" => Ok(MenuScene::Background),
-            "Desktop" => Ok(MenuScene::Desktop),
-            "Drive" => Ok(MenuScene::Drive),
-            "AllObjects" => Ok(MenuScene::AllObjects),
-            "Computer" => Ok(MenuScene::Computer),
-            "RecycleBin" => Ok(MenuScene::RecycleBin),
-            "Library" => Ok(MenuScene::Library),
+            "File" => Ok(Scene::File),
+            "Folder" => Ok(Scene::Folder),
+            "Directory" => Ok(Scene::Directory),
+            "Background" => Ok(Scene::Background),
+            "DesktopBackground" => Ok(Scene::DesktopBackground),
+            "Drive" => Ok(Scene::Drive),
+            "AllObjects" => Ok(Scene::AllObjects),
+            "Computer" => Ok(Scene::Computer),
+            "RecycleBin" => Ok(Scene::RecycleBin),
+            "Library" => Ok(Scene::Library),
+            "LibraryBackground" => Ok(Scene::LibraryBackground),
+            "User" => Ok(Scene::User),
+            "Uwp" => Ok(Scene::Uwp),
+            "SystemFileAssociations" => Ok(Scene::SystemFileAssociations),
+            "Unknown" => Ok(Scene::Unknown),
             _ => Err(()),
         }
     }
 }
 
-impl MenuScene {
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegItem {
+    pub id: String,
+    pub data: HashMap<String, String>,
+}
+
+impl Scene {
     pub fn registry_path(&self) -> &'static str {
         match self {
-            MenuScene::File => r"HKEY_CLASSES_ROOT\*",
-            MenuScene::Folder => r"HKEY_CLASSES_ROOT\Folder",
-            MenuScene::Directory => r"HKEY_CLASSES_ROOT\Directory",
-            MenuScene::Background => r"HKEY_CLASSES_ROOT\Directory\Background",
-            MenuScene::Desktop => r"HKEY_CLASSES_ROOT\DesktopBackground",
-            MenuScene::Drive => r"HKEY_CLASSES_ROOT\Drive",
-            MenuScene::AllObjects => r"HKEY_CLASSES_ROOT\AllFilesystemObjects",
-            MenuScene::Computer => {
-                r"HKEY_CLASSES_ROOT\CLSID\{20D04FE0-3AEA-1069-A2D8-08002B30309D}"
-            }
-            MenuScene::RecycleBin => {
-                r"HKEY_CLASSES_ROOT\CLSID\{645FF040-5081-101B-9F08-00AA002F954E}"
-            }
-            MenuScene::Library => r"HKEY_CLASSES_ROOT\LibraryFolder",
+            Scene::File => r"HKEY_CLASSES_ROOT\*",
+            Scene::Folder => r"HKEY_CLASSES_ROOT\Folder",
+            Scene::Directory => r"HKEY_CLASSES_ROOT\Directory",
+            Scene::Background => r"HKEY_CLASSES_ROOT\Directory\Background",
+            Scene::DesktopBackground => r"HKEY_CLASSES_ROOT\DesktopBackground",
+            Scene::Drive => r"HKEY_CLASSES_ROOT\Drive",
+            Scene::AllObjects => r"HKEY_CLASSES_ROOT\AllFilesystemObjects",
+            Scene::Computer => r"HKEY_CLASSES_ROOT\CLSID\{20D04FE0-3AEA-1069-A2D8-08002B30309D}",
+            Scene::RecycleBin => r"HKEY_CLASSES_ROOT\CLSID\{645FF040-5081-101B-9F08-00AA002F954E}",
+            Scene::Library => r"HKEY_CLASSES_ROOT\LibraryFolder",
+            Scene::LibraryBackground => r"HKEY_CLASSES_ROOT\LibraryFolder\Background",
+            Scene::User => r"HKEY_CLASSES_ROOT\UserLibraryFolder",
+            Scene::Uwp => r"HKEY_CLASSES_ROOT\Launcher.ImmersiveApplication",
+            Scene::Unknown => r"HKEY_CLASSES_ROOT\Unknown",
+            Scene::SystemFileAssociations => r"HKEY_CLASSES_ROOT\SystemFileAssociations",
         }
     }
+}
 
-    pub fn display_name(&self) -> &'static str {
-        match self {
-            MenuScene::File => "File",
-            MenuScene::Folder => "Folder",
-            MenuScene::Directory => "Directory",
-            MenuScene::Background => "Background",
-            MenuScene::Desktop => "Desktop",
-            MenuScene::Drive => "Drive",
-            MenuScene::AllObjects => "AllObjects",
-            MenuScene::Computer => "Computer",
-            MenuScene::RecycleBin => "RecycleBin",
-            MenuScene::Library => "Library",
-        }
-    }
+// fn get_backup_path() -> String {
+//     let d = dirs::config_dir().expect("Failed to get config directory");
+//     d.join("wcm_backup.json")
+//         .to_str()
+//         .unwrap()
+//         .to_string()
+// }
+
+fn get_backup() -> Vec<String> {
+    return vec![];
 }
 
 #[derive(Debug, Clone)]
@@ -154,16 +170,21 @@ impl RegistryManager {
         let mut collection = MenuItemCollection::new();
 
         let scenes = [
-            MenuScene::File,
-            MenuScene::Folder,
-            MenuScene::Directory,
-            MenuScene::Background,
-            MenuScene::Desktop,
-            MenuScene::Drive,
-            MenuScene::AllObjects,
-            MenuScene::Computer,
-            MenuScene::RecycleBin,
-            MenuScene::Library,
+            Scene::File,
+            Scene::Folder,
+            Scene::Directory,
+            Scene::Background,
+            Scene::DesktopBackground,
+            Scene::Drive,
+            Scene::AllObjects,
+            Scene::Computer,
+            Scene::RecycleBin,
+            Scene::Library,
+            Scene::LibraryBackground,
+            Scene::User,
+            Scene::Uwp,
+            Scene::SystemFileAssociations,
+            Scene::Unknown,
         ];
 
         for scene in scenes {
@@ -175,7 +196,7 @@ impl RegistryManager {
 
     fn load_scene_items(
         collection: &mut MenuItemCollection,
-        scene: MenuScene,
+        scene: Scene,
     ) -> Result<(), anyhow::Error> {
         let scene_path = scene.registry_path();
 
@@ -187,7 +208,7 @@ impl RegistryManager {
     fn load_shell_items(
         collection: &mut MenuItemCollection,
         scene_path: &str,
-        scene: MenuScene,
+        scene: Scene,
     ) -> Result<(), anyhow::Error> {
         let shell_path = format!("{scene_path}\\shell");
 
@@ -210,7 +231,7 @@ impl RegistryManager {
     fn load_shellex_items(
         collection: &mut MenuItemCollection,
         scene_path: &str,
-        scene: MenuScene,
+        scene: Scene,
     ) -> Result<(), anyhow::Error> {
         let shellex_path = format!("{scene_path}\\ShellEx");
 
@@ -232,7 +253,7 @@ impl RegistryManager {
         collection: &mut MenuItemCollection,
         cmh_key: &RegKey,
         shellex_path: &str,
-        scene: MenuScene,
+        scene: Scene,
     ) -> Result<(), anyhow::Error> {
         for subkey_name in cmh_key.enum_keys() {
             let subkey_name = subkey_name?;
@@ -251,7 +272,7 @@ impl RegistryManager {
         collection: &mut MenuItemCollection,
         ddh_key: &RegKey,
         shellex_path: &str,
-        scene: MenuScene,
+        scene: Scene,
     ) -> Result<(), anyhow::Error> {
         for subkey_name in ddh_key.enum_keys() {
             let subkey_name = subkey_name?;
@@ -270,9 +291,9 @@ impl RegistryManager {
         registry_path: &str,
         key_name: &str,
         key: &RegKey,
-        scene: MenuScene,
+        scene: Scene,
     ) -> Result<Win10MenuItem, anyhow::Error> {
-        let id = format!("shell_{}_{}", scene.display_name(), key_name);
+        let id = format!("shell_{}_{}", scene.to_string(), key_name);
 
         let name = key
             .get_value("MUIVerb")
@@ -306,9 +327,9 @@ impl RegistryManager {
         registry_path: &str,
         key_name: &str,
         key: &RegKey,
-        scene: MenuScene,
+        scene: Scene,
     ) -> Result<Win10MenuItem, anyhow::Error> {
-        let id = format!("shellex_{}_{}", scene.display_name(), key_name);
+        let id = format!("shellex_{}_{}", scene.to_string(), key_name);
 
         let guid_str = key.get_value("").unwrap_or_else(|_| key_name.to_string());
         let guid = Uuid::parse_str(&guid_str).ok();

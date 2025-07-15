@@ -32,6 +32,7 @@ windows = { version = "0.61", features = [
   "ApplicationModel",
 ] }
 is-admin = { version = "0.1", git = "https://github.com/ahaoboy/is-admin" }
+dirs = "6"
 
 [profile.release]
 debug = false

@@ -3,6 +3,7 @@ use crate::{Scope, TypeItem};
 use serde_xml_rs::from_str;
 use std::collections::HashSet;
 use std::path::PathBuf;
+use windows::ApplicationModel::Package;
 use windows::Management::Deployment::PackageManager;
 use windows::core::HSTRING;
 use winreg::enums::*;
@@ -75,18 +76,17 @@ impl Blocks {
 }
 
 struct Ext {
-    // id: String,
-    // display_name: String,
     publisher_display_name: String,
     description: String,
     types: Vec<TypeItem>,
+    logo_path: String,
 }
 
 fn get_info(manifest_path: &PathBuf) -> Option<Ext> {
     let xml = std::fs::read_to_string(manifest_path).ok()?;
     let package = from_str::<serde_appxmanifest::Package>(&xml).ok()?;
-    // let display_name = package.properties.display_name;
     let publisher_display_name = package.properties.publisher_display_name;
+    let logo = package.properties.logo;
     for app in package.applications.application {
         if let Some(ext) = app.extensions {
             let description = app.visual_elements.description;
@@ -109,6 +109,7 @@ fn get_info(manifest_path: &PathBuf) -> Option<Ext> {
                     publisher_display_name,
                     description,
                     types,
+                    logo_path: logo,
                 });
             }
 
@@ -129,12 +130,26 @@ fn get_info(manifest_path: &PathBuf) -> Option<Ext> {
                             publisher_display_name,
                             description,
                             types,
+                            logo_path: logo,
                         });
                     }
                 }
             }
         }
     }
+    None
+}
+
+fn get_logo(pkg: Package) -> Option<Vec<u8>> {
+    if let Some(icon) = pkg
+        .Logo()
+        .ok()
+        .and_then(|logo| logo.RawUri().ok())
+        .and_then(|p| std::fs::read(p.to_string()).ok())
+    {
+        return Some(icon);
+    }
+
     None
 }
 
@@ -171,20 +186,17 @@ pub fn list(scope: Scope) -> Vec<MenuItem> {
             let install_path = std::path::PathBuf::from(pkg.InstalledPath().unwrap().to_string());
             let manifest_path = install_path.join(manifest_name);
             if let Some(Ext {
-                // id,
-                // display_name,
                 publisher_display_name,
                 description,
                 types,
+                logo_path: logo,
             }) = get_info(&manifest_path)
             {
-                let icon = pkg
-                    .Logo()
-                    .ok()
-                    .and_then(|logo| logo.RawUri().ok())
-                    .and_then(|p| std::fs::read(p.to_string()).ok());
-
                 let mut visit: HashSet<String> = HashSet::new();
+                let logo_path = install_path.join(logo);
+
+                let icon = get_logo(pkg).or(std::fs::read(&logo_path).ok());
+
                 for ty in types.clone() {
                     if visit.contains(&ty.clsid) {
                         continue;

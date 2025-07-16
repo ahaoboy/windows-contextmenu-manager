@@ -22,17 +22,27 @@ anyhow = "1"
 futures = "0.3"
 thiserror = "2"
 serde = "1"
-serde_derive = "1.0"
+serde_derive = "1"
+serde_json = "1"
 serde-xml-rs = { version = "0.8" }
 serde-appxmanifest = { version = "0.1", git = "https://github.com/ahaoboy/serde-appxmanifest" }
 uuid = { version = "1", features = ["v4", "serde"] }
 windows = { version = "0.61", features = [
+  "Win32_UI_WindowsAndMessaging",
+  "Win32_Graphics_Gdi",
   "Win32_Foundation",
+  "Win32_UI_Shell",
+  "Win32_System_Threading",
+  "Win32_System_Memory",
+  "Win32_System_LibraryLoader",
   "Management_Deployment",
   "ApplicationModel",
 ] }
 is-admin = { version = "0.1", git = "https://github.com/ahaoboy/is-admin" }
 dirs = "6"
+strum = "0.27"
+strum_macros = "0.27"
+exeico = "0.1"
 
 [profile.release]
 debug = false

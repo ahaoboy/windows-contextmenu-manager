@@ -1,11 +1,32 @@
 use serde::Serialize;
-use std::fmt;
-use std::str::FromStr;
+use std::collections::HashMap;
+use strum::IntoEnumIterator;
+use strum_macros::Display;
+use strum_macros::EnumIter;
+use strum_macros::EnumString;
 use winreg::HKEY;
+use winreg::RegKey;
 use winreg::enums::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub const APP_NAME: &str = "windows-contextmenu-manager";
+pub const BACKUP_NAME: &str = "backup.json";
+
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    Deserialize,
+    Serialize,
+    EnumIter,
+    EnumString,
+    Display,
+)]
 pub enum Scope {
+    #[default]
     User,
     Machine,
 }
@@ -18,33 +39,13 @@ impl Scope {
         }
     }
 }
-impl fmt::Display for Scope {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Scope::User => write!(f, "User"),
-            Scope::Machine => write!(f, "Machine"),
-        }
-    }
-}
-
-impl FromStr for Scope {
-    type Err = &'static str;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "User" => Ok(Scope::User),
-            "Machine" => Ok(Scope::Machine),
-            _ => Err("Invalid scope string, expected 'User' or 'Machine'"),
-        }
-    }
-}
 
 pub trait Manager {
-    fn list(&self, scope: Scope) -> Vec<MenuItem>;
-    fn disable(&self, id: &str, scope: Scope) -> Result<(), anyhow::Error>;
-    fn enable(&self, id: &str, scope: Scope) -> Result<(), anyhow::Error>;
+    fn list(&self, scope: Option<Scope>) -> Vec<MenuItem>;
+    fn disable(&self, id: &str, scope: Option<Scope>) -> Result<(), anyhow::Error>;
+    fn enable(&self, id: &str, scope: Option<Scope>) -> Result<(), anyhow::Error>;
 }
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct MenuItem {
     pub id: String,
     pub name: String,
@@ -52,14 +53,14 @@ pub struct MenuItem {
     pub info: Option<MenuItemInfo>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct TypeItem {
     pub id: String,
     pub ty: String,
     pub clsid: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct MenuItemInfo {
     pub icon: Option<Vec<u8>>,
     pub publisher_display_name: String,
@@ -71,38 +72,38 @@ pub struct MenuItemInfo {
 }
 
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub enum Type {
     Win10,
+    #[default]
     Win11,
 }
 
 impl Manager for Type {
-    fn list(&self, scope: Scope) -> Vec<MenuItem> {
+    fn list(&self, scope: Option<Scope>) -> Vec<MenuItem> {
         match self {
             Type::Win10 => crate::win10::list(),
-            Type::Win11 => crate::win11::list(scope),
+            Type::Win11 => crate::win11::list(scope.unwrap_or_default()),
         }
     }
 
-    fn disable(&self, id: &str, scope: Scope) -> Result<(), anyhow::Error> {
+    fn disable(&self, id: &str, scope: Option<Scope>) -> Result<(), anyhow::Error> {
         match self {
             Type::Win10 => crate::win10::disable(id),
-            Type::Win11 => crate::win11::disable(id, scope),
+            Type::Win11 => crate::win11::disable(id, scope.unwrap_or_default()),
         }
     }
 
-    fn enable(&self, id: &str, scope: Scope) -> Result<(), anyhow::Error> {
+    fn enable(&self, id: &str, scope: Option<Scope>) -> Result<(), anyhow::Error> {
         match self {
             Type::Win10 => crate::win10::enable(id),
-            Type::Win11 => crate::win11::enable(id, scope),
+            Type::Win11 => crate::win11::enable(id, scope.unwrap_or_default()),
         }
     }
 }
 
 use serde::Deserialize;
 use std::io::{self};
-use winreg::RegKey;
 
 const CLSID_PATH: &str =
     r"SOFTWARE\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32";
@@ -156,6 +157,148 @@ impl Type {
             Type::Win11
         } else {
             Type::Win10
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct RegItem {
+    pub path: String,
+    pub values: HashMap<String, String>,
+    pub children: Vec<RegItem>,
+}
+
+impl RegItem {
+    pub fn from_path(path: &str) -> io::Result<RegItem> {
+        let reg_key = RegKey::predef(HKEY_CLASSES_ROOT).open_subkey(path)?;
+
+        let mut values = HashMap::new();
+        for value_name in reg_key.enum_values().map(|x| x.unwrap().0) {
+            let value = reg_key.get_value::<String, _>(&value_name);
+            if let Ok(val) = value {
+                values.insert(value_name, val);
+            }
+        }
+
+        let mut children: Vec<RegItem> = Vec::new();
+        for subkey_name in reg_key.enum_keys().map(|x| x.unwrap()) {
+            let subkey_path = format!("{path}\\{subkey_name}");
+            let subkey_item = RegItem::from_path(&subkey_path)?;
+            children.push(subkey_item);
+        }
+
+        Ok(RegItem {
+            path: path.to_string(),
+            values,
+            children,
+        })
+    }
+
+    fn is_safe(&self) -> bool {
+        for i in Scene::iter().flat_map(|s| s.registry_path().to_vec()) {
+            if self.path.starts_with(i) {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    pub fn write(&self) {
+        if !self.is_safe() {
+            return;
+        }
+        let root = RegKey::predef(HKEY_CLASSES_ROOT);
+        if let Ok((key, _disp)) = root.create_subkey(&self.path) {
+            for (name, value) in &self.values {
+                let _ = key.set_value(name.as_str(), value);
+            }
+            for child in &self.children {
+                child.write();
+            }
+        }
+    }
+
+    pub fn delete(&self) -> io::Result<()> {
+        if !self.is_safe() {
+            return Ok(());
+        }
+        let reg_key = RegKey::predef(HKEY_CLASSES_ROOT)
+            .open_subkey_with_flags(self.path.clone(), KEY_WRITE)?;
+        for i in &self.children {
+            let _ = i.delete();
+        }
+        reg_key.delete_subkey_with_flags("", KEY_WRITE)?;
+        Ok(())
+    }
+}
+
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    Deserialize,
+    Serialize,
+    EnumIter,
+    EnumString,
+    Display,
+)]
+pub enum Scene {
+    #[default]
+    File,
+    Folder,
+    Desktop,
+    Directory,
+    Background,
+    Drive,
+    AllObjects,
+    Computer,
+    RecycleBin,
+    Library,
+    LibraryBackground,
+    User,
+    Uwp,
+    SystemFileAssociations,
+    Unknown,
+}
+
+impl Scene {
+    pub fn registry_path(&self) -> &[&'static str] {
+        match self {
+            Scene::File => &[r"*\\shell", r"*\\ShellEx", r"*\\OpenWithList"],
+            Scene::Folder => &[r"Folder\\shell", r"Folder\\ShellEx"],
+            Scene::Background => &[
+                r"Directory\Background\Shell",
+                r"Directory\Background\ShellEx",
+            ],
+            Scene::Directory => &[r"Directory\Shell", r"Directory\ShellEx"],
+            Scene::Desktop => &[r"DesktopBackground\Shell", r"DesktopBackground\ShellEx"],
+            Scene::Drive => &[r"Drive\\Shell", r"Drive\\ShellEx"],
+            Scene::AllObjects => &[
+                r"AllFilesystemObjects\\Shell",
+                r"AllFilesystemObjects\\ShellEx",
+            ],
+            Scene::Computer => &[r"CLSID\{20D04FE0-3AEA-1069-A2D8-08002B30309D}"],
+            Scene::RecycleBin => &[
+                r"CLSID\{645FF040-5081-101B-9F08-00AA002F954E}\\Shell",
+                r"CLSID\{645FF040-5081-101B-9F08-00AA002F954E}\\ShellEx",
+            ],
+            Scene::Library => &[r"LibraryFolder\\Shell", r"LibraryFolder\\ShellEx"],
+            Scene::LibraryBackground => &[
+                r"LibraryFolder\Background\\Shell",
+                r"LibraryFolder\Background\\ShellEx",
+            ],
+            Scene::User => &[r"UserLibraryFolder\\Shell", r"UserLibraryFolder\\ShellEx"],
+            Scene::Uwp => &[
+                r"Launcher.ImmersiveApplication\\Shell",
+                r"Launcher.ImmersiveApplication\\ShellEx",
+            ],
+            Scene::SystemFileAssociations => &[r"SystemFileAssociations"],
+            Scene::Unknown => &[r"Unknown"],
         }
     }
 }

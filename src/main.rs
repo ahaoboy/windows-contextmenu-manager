@@ -29,7 +29,7 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum Win10Command {
-    List { scope: Scope },
+    List,
     Enable { id: String },
     Disable { id: String },
 }
@@ -67,19 +67,18 @@ fn main() {
             return;
         }
         Commands::Win10 { command } => match command {
-            Win10Command::List { scope } => {
-                if scope == Scope::Machine && !is_admin::is_admin() {
-                    panic!("You must run this command as an administrator.");
-                }
-                let v = Type::Win10.list(scope);
+            Win10Command::List => {
+                let v = Type::Win10.list(None);
                 for i in v {
                     let icon = if i.enabled { "✅" } else { "❌" };
                     println!("{icon} {} {}", i.id, i.name);
                 }
             }
-            Win10Command::Enable { id } => println!("Enabling Windows 10 feature with ID: {}", id),
+            Win10Command::Enable { id } => {
+                Type::Win10.enable(&id, None);
+            }
             Win10Command::Disable { id } => {
-                println!("Disabling Windows 10 feature with ID: {}", id)
+                Type::Win10.disable(&id, None);
             }
         },
         Commands::Win11 { command } => match command {
@@ -87,22 +86,21 @@ fn main() {
                 if scope == Scope::Machine && !is_admin::is_admin() {
                     panic!("You must run this command as an administrator.");
                 }
-                Type::Win11.enable(&id, scope);
+                Type::Win11.enable(&id, Some(scope));
             }
             Win11Command::Disable { scope, id } => {
                 if scope == Scope::Machine && !is_admin::is_admin() {
                     panic!("You must run this command as an administrator.");
                 }
-                Type::Win11.disable(&id, scope);
+                Type::Win11.disable(&id, Some(scope));
             }
             Win11Command::List { scope } => {
                 if scope == Scope::Machine && !is_admin::is_admin() {
                     panic!("You must run this command as an administrator.");
                 }
-                let v = Type::Win11.list(scope);
+                let v = Type::Win11.list(Some(scope));
                 for i in v {
                     let icon = if i.enabled { "✅" } else { "❌" };
-
                     println!("{icon} {} {}", i.id, i.name,);
                 }
             }

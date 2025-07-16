@@ -10,6 +10,21 @@ use winreg::enums::*;
 
 pub const APP_NAME: &str = "windows-contextmenu-manager";
 pub const BACKUP_NAME: &str = "backup.json";
+pub const WIN10_SKIP_REGKEY: [&str; 13] = [
+    "ContextMenuHandlers",
+    "CopyHookHandlers",
+    "DragDropHandlers",
+    "PropertySheetHandlers",
+    "UpdateEncryptionSettings",
+    "UpdateEncryptionSettingsWork",
+    "DefaultIcon",
+    "shell",
+    "ShellFolder",
+    "LibraryDescriptionHandler",
+    "IconHandler",
+    "SharingHandler",
+    "removeproperties"
+];
 
 #[derive(
     Debug,
@@ -45,7 +60,7 @@ pub trait Manager {
     fn disable(&self, id: &str, scope: Option<Scope>) -> Result<(), anyhow::Error>;
     fn enable(&self, id: &str, scope: Option<Scope>) -> Result<(), anyhow::Error>;
 }
-#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq,   Deserialize, Serialize)]
 pub struct MenuItem {
     pub id: String,
     pub name: String,
@@ -60,7 +75,7 @@ pub struct TypeItem {
     pub clsid: String,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq,   Deserialize, Serialize)]
 pub struct MenuItemInfo {
     pub icon: Option<Vec<u8>>,
     pub publisher_display_name: String,
@@ -69,6 +84,7 @@ pub struct MenuItemInfo {
     pub install_path: String,
     pub family_name: String,
     pub full_name: String,
+    pub reg: Option<RegItem>
 }
 
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
@@ -263,42 +279,42 @@ pub enum Scene {
     User,
     Uwp,
     SystemFileAssociations,
-    Unknown,
+    // Unknown,
 }
 
 impl Scene {
     pub fn registry_path(&self) -> &[&'static str] {
         match self {
-            Scene::File => &[r"*\\shell", r"*\\ShellEx", r"*\\OpenWithList"],
-            Scene::Folder => &[r"Folder\\shell", r"Folder\\ShellEx"],
+            Scene::File => &[r"*\shell", r"*\ShellEx", r"*\OpenWithList"],
+            Scene::Folder => &[r"Folder\shell", r"Folder\ShellEx"],
             Scene::Background => &[
                 r"Directory\Background\Shell",
                 r"Directory\Background\ShellEx",
             ],
             Scene::Directory => &[r"Directory\Shell", r"Directory\ShellEx"],
             Scene::Desktop => &[r"DesktopBackground\Shell", r"DesktopBackground\ShellEx"],
-            Scene::Drive => &[r"Drive\\Shell", r"Drive\\ShellEx"],
+            Scene::Drive => &[r"Drive\Shell", r"Drive\ShellEx"],
             Scene::AllObjects => &[
-                r"AllFilesystemObjects\\Shell",
-                r"AllFilesystemObjects\\ShellEx",
+                r"AllFilesystemObjects\Shell",
+                r"AllFilesystemObjects\ShellEx",
             ],
             Scene::Computer => &[r"CLSID\{20D04FE0-3AEA-1069-A2D8-08002B30309D}"],
             Scene::RecycleBin => &[
-                r"CLSID\{645FF040-5081-101B-9F08-00AA002F954E}\\Shell",
-                r"CLSID\{645FF040-5081-101B-9F08-00AA002F954E}\\ShellEx",
+                r"CLSID\{645FF040-5081-101B-9F08-00AA002F954E}\Shell",
+                r"CLSID\{645FF040-5081-101B-9F08-00AA002F954E}\ShellEx",
             ],
-            Scene::Library => &[r"LibraryFolder\\Shell", r"LibraryFolder\\ShellEx"],
+            Scene::Library => &[r"LibraryFolder\Shell", r"LibraryFolder\ShellEx"],
             Scene::LibraryBackground => &[
-                r"LibraryFolder\Background\\Shell",
-                r"LibraryFolder\Background\\ShellEx",
+                r"LibraryFolder\Background\Shell",
+                r"LibraryFolder\Background\ShellEx",
             ],
-            Scene::User => &[r"UserLibraryFolder\\Shell", r"UserLibraryFolder\\ShellEx"],
+            Scene::User => &[r"UserLibraryFolder\Shell", r"UserLibraryFolder\ShellEx"],
             Scene::Uwp => &[
-                r"Launcher.ImmersiveApplication\\Shell",
-                r"Launcher.ImmersiveApplication\\ShellEx",
+                r"Launcher.ImmersiveApplication\Shell",
+                r"Launcher.ImmersiveApplication\ShellEx",
             ],
             Scene::SystemFileAssociations => &[r"SystemFileAssociations"],
-            Scene::Unknown => &[r"Unknown"],
+            // Scene::Unknown => &[r"Unknown"],
         }
     }
 }

@@ -214,6 +214,7 @@ pub fn list(scope: Scope) -> Vec<MenuItem> {
                         install_path: install_path.to_string_lossy().to_string(),
                         family_name: family_name.clone(),
                         full_name: full_name.clone(),
+                        reg:None
                     });
 
                     v.push(MenuItem {

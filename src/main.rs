@@ -1,6 +1,4 @@
-use anyhow::Ok;
 use clap::{Parser, Subcommand};
-use std::str::FromStr;
 use wcm::*;
 
 #[derive(Parser)]
@@ -58,10 +56,10 @@ fn main() {
                     )
                 }
                 Some(Type::Win10) => {
-                    set_context_menu_style(false);
+                    let _ = set_context_menu_style(false);
                 }
                 Some(Type::Win11) => {
-                    set_context_menu_style(true);
+                    let _ = set_context_menu_style(true);
                 }
             }
             return;
@@ -75,10 +73,10 @@ fn main() {
                 }
             }
             Win10Command::Enable { id } => {
-                Type::Win10.enable(&id, None);
+                let _ =  Type::Win10.enable(&id, None);
             }
             Win10Command::Disable { id } => {
-                Type::Win10.disable(&id, None);
+            let _ =    Type::Win10.disable(&id, None);
             }
         },
         Commands::Win11 { command } => match command {
@@ -86,13 +84,13 @@ fn main() {
                 if scope == Scope::Machine && !is_admin::is_admin() {
                     panic!("You must run this command as an administrator.");
                 }
-                Type::Win11.enable(&id, Some(scope));
+             let _ =     Type::Win11.enable(&id, Some(scope));
             }
             Win11Command::Disable { scope, id } => {
                 if scope == Scope::Machine && !is_admin::is_admin() {
                     panic!("You must run this command as an administrator.");
                 }
-                Type::Win11.disable(&id, Some(scope));
+             let _ =     Type::Win11.disable(&id, Some(scope));
             }
             Win11Command::List { scope } => {
                 if scope == Scope::Machine && !is_admin::is_admin() {

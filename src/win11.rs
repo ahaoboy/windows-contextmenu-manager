@@ -1,5 +1,6 @@
 use crate::{MenuItem, MenuItemInfo};
 use crate::{Scope, TypeItem};
+use exeico::get_icos;
 use serde_xml_rs::from_str;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -153,6 +154,14 @@ fn get_logo(pkg: Package) -> Option<Vec<u8>> {
     None
 }
 
+const BAD_APP: [(&str, &str); 5] = [
+    ("0002DEAD-9BF7-4CFA-8A5C-DE8679340001", "/../BandiView.exe"),
+    ("0002DEAD-9BF7-4CFA-8A5C-DE8679340002", "/../BandiView.exe"),
+    ("0001DEAD-9BF7-4CFA-8A5C-DE8679340001", "/../Bandizip.exe"),
+    ("0001DEAD-9BF7-4CFA-8A5C-DE8679340002", "/../Bandizip.exe"),
+    ("2411DA87-DA40-22F7-772E-5CBF99D5AA5F", "/../HipsMain.exe" )
+];
+
 pub fn list(scope: Scope) -> Vec<MenuItem> {
     let hkcr = RegKey::predef(HKEY_CLASSES_ROOT);
     let subkey = hkcr.open_subkey("PackagedCom\\Package").unwrap();
@@ -170,6 +179,7 @@ pub fn list(scope: Scope) -> Vec<MenuItem> {
             } else {
                 "AppxManifest.xml"
             };
+            let d = pkg.EffectiveExternalPath().map(|i| i.to_string()).ok();
 
             let family_name = pkg
                 .Id()
@@ -185,6 +195,7 @@ pub fn list(scope: Scope) -> Vec<MenuItem> {
 
             let install_path = std::path::PathBuf::from(pkg.InstalledPath().unwrap().to_string());
             let manifest_path = install_path.join(manifest_name);
+
             if let Some(Ext {
                 publisher_display_name,
                 description,
@@ -194,10 +205,22 @@ pub fn list(scope: Scope) -> Vec<MenuItem> {
             {
                 let mut visit: HashSet<String> = HashSet::new();
                 let logo_path = install_path.join(logo);
-
-                let icon = get_logo(pkg).or(std::fs::read(&logo_path).ok());
+                let pkg_icon = get_logo(pkg).or(std::fs::read(&logo_path).ok());
 
                 for ty in types.clone() {
+                    let icon = if let Some((_, rel_path)) = BAD_APP.iter().find(|i| i.0 == ty.clsid)
+                    {
+                        d.clone().and_then(|dir| {
+                            use path_clean::clean;
+                            let exe_path = clean(dir + rel_path);
+                            let bin = std::fs::read(exe_path).ok()?;
+                            let icos = get_icos(&bin).ok()?;
+                            icos.first().map(|i| i.data.clone())
+                        })
+                    } else {
+                        pkg_icon.clone()
+                    };
+
                     if visit.contains(&ty.clsid) {
                         continue;
                     }
@@ -214,7 +237,7 @@ pub fn list(scope: Scope) -> Vec<MenuItem> {
                         install_path: install_path.to_string_lossy().to_string(),
                         family_name: family_name.clone(),
                         full_name: full_name.clone(),
-                        reg:None
+                        reg: None,
                     });
 
                     v.push(MenuItem {

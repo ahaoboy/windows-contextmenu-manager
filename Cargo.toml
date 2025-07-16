@@ -43,6 +43,7 @@ dirs = "6"
 strum = "0.27"
 strum_macros = "0.27"
 exeico = "0.1"
+path-clean = "1"
 
 [profile.release]
 debug = false

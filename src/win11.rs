@@ -1,6 +1,5 @@
 use crate::{MenuItem, MenuItemInfo};
 use crate::{Scope, TypeItem};
-use exeico::get_icos;
 use serde_xml_rs::from_str;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -183,7 +182,7 @@ pub fn list(scope: Scope) -> Vec<MenuItem> {
             } else {
                 "AppxManifest.xml"
             };
-            let d = pkg.EffectiveExternalPath().map(|i| i.to_string()).ok();
+            let effective_external_path = pkg.EffectiveExternalPath().map(|i| i.to_string()).ok();
             let family_name = pkg
                 .Id()
                 .and_then(|i| i.FamilyName())
@@ -213,12 +212,10 @@ pub fn list(scope: Scope) -> Vec<MenuItem> {
                 for ty in types.clone() {
                     let icon = if let Some((_, rel_path)) = BAD_APP.iter().find(|i| i.0 == ty.clsid)
                     {
-                        d.clone().and_then(|dir| {
+                        effective_external_path.clone().and_then(|dir| {
                             use path_clean::clean;
                             let exe_path = clean(dir + rel_path);
-                            let bin = std::fs::read(exe_path).ok()?;
-                            let icos = get_icos(&bin).ok()?;
-                            icos.first().map(|i| i.data.clone())
+                            exeico::get_exe_ico(&exe_path).ok()
                         })
                     } else {
                         pkg_icon.clone()

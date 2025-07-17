@@ -42,7 +42,7 @@ is-admin = { version = "0.1", git = "https://github.com/ahaoboy/is-admin" }
 dirs = "6"
 strum = "0.27"
 strum_macros = "0.27"
-exeico = "0.1"
+exeico = { version = "0.1", git = "https://github.com/ahaoboy/exeico" }
 path-clean = "1"
 base64 = "0.22"
 

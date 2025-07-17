@@ -23,7 +23,7 @@ pub const WIN10_SKIP_REGKEY: [&str; 13] = [
     "LibraryDescriptionHandler",
     "IconHandler",
     "SharingHandler",
-    "removeproperties"
+    "removeproperties",
 ];
 
 #[derive(
@@ -60,7 +60,7 @@ pub trait Manager {
     fn disable(&self, id: &str, scope: Option<Scope>) -> Result<(), anyhow::Error>;
     fn enable(&self, id: &str, scope: Option<Scope>) -> Result<(), anyhow::Error>;
 }
-#[derive(Debug, Clone, Default, PartialEq, Eq,   Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub struct MenuItem {
     pub id: String,
     pub name: String,
@@ -75,8 +75,9 @@ pub struct TypeItem {
     pub clsid: String,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq,   Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub struct MenuItemInfo {
+    #[serde(with = "base64_option_vec")]
     pub icon: Option<Vec<u8>>,
     pub publisher_display_name: String,
     pub description: String,
@@ -84,7 +85,43 @@ pub struct MenuItemInfo {
     pub install_path: String,
     pub family_name: String,
     pub full_name: String,
-    pub reg: Option<RegItem>
+    pub reg: Option<RegItem>,
+}
+
+use serde::{Deserialize, Deserializer, Serializer};
+use base64::{engine::general_purpose, Engine as _};
+
+pub mod base64_option_vec {
+    use super::*;
+
+    pub fn serialize<S>(value: &Option<Vec<u8>>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match value {
+            Some(vec) => {
+                let encoded = general_purpose::STANDARD.encode(vec);
+                serializer.serialize_some(&encoded)
+            }
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Vec<u8>>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let opt = Option::<String>::deserialize(deserializer)?;
+        match opt {
+            Some(s) => {
+                let decoded = general_purpose::STANDARD
+                    .decode(&s)
+                    .map_err(serde::de::Error::custom)?;
+                Ok(Some(decoded))
+            }
+            None => Ok(None),
+        }
+    }
 }
 
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
@@ -118,7 +155,6 @@ impl Manager for Type {
     }
 }
 
-use serde::Deserialize;
 use std::io::{self};
 
 const CLSID_PATH: &str =

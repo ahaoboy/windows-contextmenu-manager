@@ -154,12 +154,16 @@ fn get_logo(pkg: Package) -> Option<Vec<u8>> {
     None
 }
 
-const BAD_APP: [(&str, &str); 5] = [
+const BAD_APP: [(&str, &str); 6] = [
     ("0002DEAD-9BF7-4CFA-8A5C-DE8679340001", "/../BandiView.exe"),
     ("0002DEAD-9BF7-4CFA-8A5C-DE8679340002", "/../BandiView.exe"),
     ("0001DEAD-9BF7-4CFA-8A5C-DE8679340001", "/../Bandizip.exe"),
     ("0001DEAD-9BF7-4CFA-8A5C-DE8679340002", "/../Bandizip.exe"),
-    ("2411DA87-DA40-22F7-772E-5CBF99D5AA5F", "/../HipsMain.exe" )
+    ("2411DA87-DA40-22F7-772E-5CBF99D5AA5F", "/../HipsMain.exe"),
+    (
+        "799F4F7E-5934-4001-A74C-E207F44F05B8",
+        "/../Code - Insiders.exe",
+    ),
 ];
 
 pub fn list(scope: Scope) -> Vec<MenuItem> {
@@ -180,7 +184,6 @@ pub fn list(scope: Scope) -> Vec<MenuItem> {
                 "AppxManifest.xml"
             };
             let d = pkg.EffectiveExternalPath().map(|i| i.to_string()).ok();
-
             let family_name = pkg
                 .Id()
                 .and_then(|i| i.FamilyName())

@@ -171,7 +171,7 @@ pub fn list(scope: Scope) -> Vec<MenuItem> {
     let names: Vec<_> = subkey.enum_keys().flat_map(|x| x.ok()).collect();
     let package_manager = PackageManager::new().unwrap();
 
-    let mut v = vec![];
+    let mut v: Vec<MenuItem> = vec![];
     let blocks = Blocks::new(scope);
 
     for full_name in names {
@@ -215,7 +215,9 @@ pub fn list(scope: Scope) -> Vec<MenuItem> {
                         effective_external_path.clone().and_then(|dir| {
                             use path_clean::clean;
                             let exe_path = clean(dir + rel_path);
-                            exeico::get_exe_ico(&exe_path).ok()
+                            exeico::get_dll_icos(&exe_path)
+                                .ok()
+                                .and_then(|opt| opt.first().cloned())
                         })
                     } else {
                         pkg_icon.clone()

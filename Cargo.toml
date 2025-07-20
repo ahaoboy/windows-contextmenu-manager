@@ -50,6 +50,7 @@ base64 = "0.22"
 which = "8"
 regex = "1"
 cached = "0.55"
+tempfile = "3"
 
 [profile.release]
 debug = false

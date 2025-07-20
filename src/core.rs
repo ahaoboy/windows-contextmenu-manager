@@ -4,6 +4,7 @@ use strum::IntoEnumIterator;
 use strum_macros::Display;
 use strum_macros::EnumIter;
 use strum_macros::EnumString;
+use tempfile::NamedTempFile;
 use winreg::HKEY;
 use winreg::RegKey;
 use winreg::enums::*;
@@ -454,4 +455,26 @@ impl GuidManager {
     pub fn get_item(&self, guid: &str) -> Option<&GuidItem> {
         self.items.get(guid)
     }
+}
+
+pub fn export_reg(reg_path: &str) -> io::Result<Vec<u8>> {
+    let temp_file = NamedTempFile::new()?;
+    let temp_path = temp_file.path().to_path_buf();
+
+    drop(temp_file);
+
+    let temp_path = temp_path.to_string_lossy().to_string();
+
+    let full_path = format!("HKEY_CLASSES_ROOT\\{reg_path}");
+
+    let status = Command::new("reg")
+        .args(["export", &full_path, &temp_path, "/y"])
+        // .stdout(Stdio::null())
+        // .stderr(Stdio::null())
+        .status()?;
+
+    if !status.success() {
+        return Err(io::Error::other("reg export failed"));
+    }
+    std::fs::read(temp_path)
 }

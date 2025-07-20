@@ -37,6 +37,8 @@ windows = { version = "0.61", features = [
   "Win32_System_LibraryLoader",
   "Management_Deployment",
   "ApplicationModel",
+  "Graphics",
+  "Win32_System_SystemInformation",
 ] }
 is-admin = { version = "0.1", git = "https://github.com/ahaoboy/is-admin" }
 dirs = "6"
@@ -45,6 +47,7 @@ strum_macros = "0.27"
 exeico = { version = "0.1", git = "https://github.com/ahaoboy/exeico" }
 path-clean = "1"
 base64 = "0.22"
+which = "8"
 
 [profile.release]
 debug = false

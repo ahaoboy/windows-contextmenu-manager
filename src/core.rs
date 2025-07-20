@@ -65,7 +65,7 @@ pub struct MenuItem {
     pub id: String,
     pub name: String,
     pub enabled: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub info: Option<MenuItemInfo>,
 }
 
@@ -79,16 +79,16 @@ pub struct TypeItem {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub struct MenuItemInfo {
     #[serde(with = "base64_option_vec")]
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<Vec<u8>>,
     pub publisher_display_name: String,
     pub description: String,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub types: Vec<TypeItem>,
     pub install_path: String,
     pub family_name: String,
     pub full_name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reg: Option<RegItem>,
 }
 
@@ -221,10 +221,10 @@ impl Type {
 pub struct RegItem {
     pub path: String,
 
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub values: HashMap<String, String>,
 
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<RegItem>,
 }
 
@@ -235,6 +235,45 @@ impl RegItem {
             .find(|c| c.path.split('\\').next_back() == Some(name))
     }
 
+    pub fn get_guid(&self) -> Option<String> {
+        for i in ["CommandStateHandler", "DelegateExecute", "CLSID"] {
+            if let Some(value) = self.values.get(i)
+                && value.starts_with("{")
+                && value.ends_with("}")
+            {
+                return Some(value[1..value.len() - 1].to_string());
+            }
+        }
+
+        for i in [
+            "command",
+            "DropTarget",
+            "SystemFileAssociations",
+            "PropertySheetHandlers",
+            "DragDropHandlers",
+            "CopyHookHandlers",
+        ] {
+            if let Some(child) = self.get_child(i)
+                && let Some(cid) = child.get_guid()
+            {
+                return Some(cid);
+            }
+        }
+
+        let guid_re = regex::Regex::new(r"(?i)[A-F0-9]{8}(-[A-F0-9]{4}){3}-[A-F0-9]{12}").unwrap();
+
+        for i in [
+            self.path.as_str(),
+            self.values.get("").map_or("", |v| v),
+            self.values.get("CLSID").map_or("", |v| v),
+        ] {
+            if let Some(cap) = guid_re.find_iter(i).next() {
+                return Some(cap.as_str().to_string());
+            }
+        }
+
+        None
+    }
     pub fn from_path(path: &str) -> io::Result<RegItem> {
         let reg_key = RegKey::predef(HKEY_CLASSES_ROOT).open_subkey(path)?;
 
@@ -261,14 +300,13 @@ impl RegItem {
     }
 
     fn is_safe(&self) -> bool {
-        for i in
-            Scene::iter().flat_map(|s| s.registry_path().iter().map(|i| i.0).collect::<Vec<_>>())
-        {
-            if self.path.starts_with(i) {
-                return true;
+        for scene_type in SceneType::iter() {
+            for reg_path in scene_type.registry_path() {
+                if self.path.starts_with(reg_path) {
+                    return true;
+                }
             }
         }
-
         false
     }
 
@@ -354,55 +392,66 @@ pub(crate) enum SceneType {
 }
 
 impl SceneType {
-    pub fn registry_path(&self) -> &[&str] {
+    pub fn registry_path(&self) -> &[&'static str] {
         match self {
             SceneType::Shell => &[
                 r"*\Shell",
+                r"Folder\shell",
                 r"Directory\Background\Shell",
                 r"Directory\Shell",
                 r"DesktopBackground\Shell",
                 r"Drive\Shell",
                 r"AllFilesystemObjects\Shell",
-                r"CLSID\{645FF040-5081-101B-9F08-00AA002F954E}\Shell",
                 r"LibraryFolder\Shell",
                 r"UserLibraryFolder\Shell",
                 r"Launcher.ImmersiveApplication\Shell",
                 r"LibraryFolder\Background\Shell",
+                r"CLSID\{20D04FE0-3AEA-1069-A2D8-08002B30309D}\shell", // Computer
+                r"CLSID\{645FF040-5081-101B-9F08-00AA002F954E}\Shell", // RecycleBin
             ],
-            SceneType::ShellEx => &[r"*\ShellEx"],
+            SceneType::ShellEx => &[
+                r"*\ShellEx",
+                r"Folder\ShellEx",
+                r"Directory\Background\ShellEx",
+                r"Directory\ShellEx",
+                r"DesktopBackground\ShellEx",
+                r"Drive\ShellEx",
+                r"LibraryFolder\Background\ShellEx",
+                r"UserLibraryFolder\ShellEx",
+                r"Launcher.ImmersiveApplication\ShellEx",
+                r"LibraryFolder\ShellEx",
+                r"CLSID\{20D04FE0-3AEA-1069-A2D8-08002B30309D}\ShellEx", // Computer
+                r"CLSID\{645FF040-5081-101B-9F08-00AA002F954E}\ShellEx", // RecycleBin
+            ],
         }
     }
 }
 
-impl Scene {
-    pub fn registry_path(&self) -> &[(&'static str, SceneType)] {
-        match self {
-            Scene::File => &[(r"*", SceneType::Shell)],
-            _ => &[], // Scene::Folder => &[  r"Folder\ShellEx"],
-                      // Scene::Background => &[
-                      //     r"Directory\Background\ShellEx",
-                      // ],
-                      // Scene::Directory => &[r"Directory\ShellEx"],
-                      // Scene::Desktop => &[, r"DesktopBackground\ShellEx"],
-                      // Scene::Drive => &[ r"Drive\ShellEx"],
-                      // Scene::AllObjects => &[
-                      //     r"AllFilesystemObjects\ShellEx",
-                      // ],
-                      // Scene::Computer => &[r"CLSID\{20D04FE0-3AEA-1069-A2D8-08002B30309D}"],
-                      // Scene::RecycleBin => &[
-                      //     r"CLSID\{645FF040-5081-101B-9F08-00AA002F954E}\ShellEx",
-                      // ],
-                      // Scene::Library => &[r"LibraryFolder\ShellEx"],
-                      // Scene::LibraryBackground => &[
-                      //
-                      //     r"LibraryFolder\Background\ShellEx",
-                      // ],
-                      // Scene::User => &[ r"UserLibraryFolder\ShellEx"],
-                      // Scene::Uwp => &[
-                      //     r"Launcher.ImmersiveApplication\ShellEx",
-                      // ],
-                      // Scene::SystemFileAssociations => &[r"SystemFileAssociations"],
-                      // Scene::Unknown => &[r"Unknown"],
-        }
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub struct GuidItem {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "ResText")]
+    pub res_text: Option<String>,
+    #[serde(rename = "Text")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "Icon")]
+    pub icon: Option<String>,
+}
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct GuidManager {
+    pub items: HashMap<String, GuidItem>,
+}
+
+impl GuidManager {
+    pub fn new() -> Self {
+        let s = include_str!("../assets/guid.json");
+        let items = serde_json::from_str::<HashMap<String, GuidItem>>(s).unwrap_or_default();
+        GuidManager { items }
+    }
+
+    pub fn get_item(&self, guid: &str) -> Option<&GuidItem> {
+        self.items.get(guid)
     }
 }

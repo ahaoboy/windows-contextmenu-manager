@@ -73,10 +73,10 @@ fn main() {
                 }
             }
             Win10Command::Enable { id } => {
-                let _ =  Type::Win10.enable(&id, None);
+                let _ = Type::Win10.enable(&id, None);
             }
             Win10Command::Disable { id } => {
-            let _ =    Type::Win10.disable(&id, None);
+                let _ = Type::Win10.disable(&id, None);
             }
         },
         Commands::Win11 { command } => match command {
@@ -84,13 +84,13 @@ fn main() {
                 if scope == Scope::Machine && !is_admin::is_admin() {
                     panic!("You must run this command as an administrator.");
                 }
-             let _ =     Type::Win11.enable(&id, Some(scope));
+                let _ = Type::Win11.enable(&id, Some(scope));
             }
             Win11Command::Disable { scope, id } => {
                 if scope == Scope::Machine && !is_admin::is_admin() {
                     panic!("You must run this command as an administrator.");
                 }
-             let _ =     Type::Win11.disable(&id, Some(scope));
+                let _ = Type::Win11.disable(&id, Some(scope));
             }
             Win11Command::List { scope } => {
                 if scope == Scope::Machine && !is_admin::is_admin() {

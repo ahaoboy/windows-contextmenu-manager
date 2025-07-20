@@ -1,5 +1,6 @@
 use crate::APP_NAME;
 use crate::BACKUP_NAME;
+use crate::GuidManager;
 use crate::MenuItem;
 use crate::MenuItemInfo;
 use crate::RegItem;
@@ -7,22 +8,6 @@ use crate::SceneType;
 use std::collections::HashSet;
 use strum::IntoEnumIterator;
 use windows::Win32::System::SystemInformation::GetWindowsDirectoryW;
-
-fn get_handle_name(i: &RegItem) -> Option<String> {
-    if let Some(handle) = i
-        .values
-        .get("DelegateExecute")
-        .or(i.values.get("CommandStateHandler"))
-        .or(i.values.get("ExplorerCommandHandler"))
-        && let Ok(handle_reg) = RegItem::from_path(&format!("CLSID\\{handle}"))
-        && let Some(handle_name) = handle_reg.values.get("")
-        && !handle_name.is_empty()
-    {
-        return Some(handle_name.to_string());
-    }
-
-    None
-}
 
 fn get_backup() -> Vec<MenuItem> {
     let Some(d) = dirs::config_local_dir() else {
@@ -70,94 +55,24 @@ fn set_backup(items: &Vec<MenuItem>) {
 
 fn load_all() -> anyhow::Result<Vec<MenuItem>, anyhow::Error> {
     let mut v = vec![];
-    // let mut backup = vec![];
-
+    let guid = GuidManager::new();
     for scene in SceneType::iter() {
         match scene {
             SceneType::Shell => {
                 for i in scene.registry_path() {
-                    let items = load_shells(i).unwrap_or_default();
+                    let items = load_shell(i, &guid).unwrap_or_default();
                     v.extend(items);
                 }
             }
-            SceneType::ShellEx => load_shellex(),
+            SceneType::ShellEx => {
+                for i in scene.registry_path() {
+                    let items = load_shellex(i, &guid).unwrap_or_default();
+                    v.extend(items);
+                }
+            }
         }
     }
-
-    // for secne in Scene::iter() {
-    //     for scene_path in secne.registry_path() {
-    //         let Ok(reg) = RegItem::from_path(scene_path.0) else {
-    //             continue;
-    //         };
-    //         for item in reg.children {
-    //             let info = MenuItemInfo {
-    //                 icon: item.values.get("Icon").and_then(|v| get_icon(v)),
-    //                 publisher_display_name: String::new(),
-    //                 description: String::new(),
-    //                 types: vec![],
-    //                 install_path: String::new(),
-    //                 family_name: String::new(),
-    //                 full_name: String::new(),
-    //                 reg: Some(item.clone()),
-    //             };
-    //             let mut name = item
-    //                 .path
-    //                 .split('\\')
-    //                 .next_back()
-    //                 .unwrap_or_default()
-    //                 .to_string();
-
-    //             // TODO: add these to unknown
-    //             if WIN10_SKIP_REGKEY.iter().any(|skip| name.ends_with(skip)) {
-    //                 continue;
-    //             }
-    //             if let Some(handle_name) = get_handle_name(&item) {
-    //                 name = handle_name
-    //             }
-
-    //             if let Some(child) = item.children.iter().find(|c| c.path.ends_with("\\command"))
-    //                 && let Some(child_name) = get_handle_name(child)
-    //             {
-    //                 name = child_name;
-    //             }
-
-    //             if let Some(s) = item
-    //                 .values
-    //                 .get("MuiVerb")
-    //                 .or(item.values.get("MUIVerb"))
-    //                 .or(item.values.get(""))
-    //             {
-    //                 // TODO: ignore "": "@shell32.dll,-8506"
-    //                 // "MuiVerb": "@appresolver.dll,-8501"
-    //                 if !s.contains(",") {
-    //                     name = s.clone();
-    //                 }
-    //                 if s.starts_with("@")
-    //                     && s.contains(",")
-    //                     && let Some(load_str) = load_indirect_string(s)
-    //                 {
-    //                     name = load_str;
-    //                 }
-    //             }
-
-    //             if name.starts_with("{") && name.ends_with("}") {
-    //                 // TODO: add to unknown
-    //                 continue;
-    //             }
-    //             let item = MenuItem {
-    //                 id: item.path.clone(),
-    //                 name,
-    //                 enabled: true,
-    //                 info: Some(info),
-    //             };
-    //             backup.push(item.clone());
-    //             v.push(item);
-    //         }
-    //     }
-    // }
-
-    println!("load_all: {}", v.len());
-    // set_backup(&v);
+    set_backup(&v);
     Ok(v)
 }
 
@@ -186,9 +101,6 @@ fn get_windows_directory() -> String {
     }
 }
 
-fn load_shell() {}
-fn load_shellex() {}
-
 fn get_dll_txt(s: &str) -> Option<String> {
     let (dll, id) = parse_reg_path(s)?;
     exeico::get_dll_txt(dll, id).ok()
@@ -206,7 +118,6 @@ fn get_ico_from_str(s: &str) -> Option<Vec<u8>> {
 }
 
 fn get_ico_from_reg(reg: &RegItem) -> Option<Vec<u8>> {
-    // println!("get_ico_from_reg {}", reg.path);
     if let Some(icon) = reg.values.get("Icon") {
         return get_ico_from_str(icon);
     }
@@ -216,13 +127,16 @@ fn get_ico_from_reg(reg: &RegItem) -> Option<Vec<u8>> {
 
     if let Some(child) = reg.get_child("command")
         && let Some(k) = child.values.get("")
-        && let Some((exe, _)) = k.split_once(' ')
     {
+        let exe = if let Some(index) = k.find(" ") {
+            &k[..index]
+        } else {
+            k
+        };
         if let Ok(exe_path) = which::which(exe) {
             return exeico::get_exe_ico(exe_path).ok();
         }
 
-        // println!("parse_path(exe) {}", parse_path(exe));
         return exeico::get_exe_ico(parse_path(exe)).ok();
     };
 
@@ -237,7 +151,7 @@ fn get_ico_from_reg(reg: &RegItem) -> Option<Vec<u8>> {
 
 fn parse_path(path: &str) -> String {
     let path = path.to_lowercase();
-    let dll = if path.starts_with("@%systemroot%") {
+    if path.starts_with("@%systemroot%") {
         path.replace("@%systemroot%", &get_windows_directory())
     } else if path.starts_with("%systemroot%") {
         path.replace("%systemroot%", &get_windows_directory())
@@ -245,18 +159,14 @@ fn parse_path(path: &str) -> String {
         path.replace("@", &(get_system_directory() + "/"))
     } else {
         get_system_directory() + "/" + &path
-    };
-    dll
+    }
 }
 
 fn parse_reg_path(s: &str) -> Option<(String, i32)> {
     let s = s.to_lowercase();
-    let Some((path, id)) = s.split_once(",") else {
-        return None;
-    };
+    let (path, id) = s.split_once(",")?;
     let id = id.parse().ok()?;
     let dll = parse_path(path);
-    // println!("dll: {dll}, id: {id}");
     Some((dll, id))
 }
 
@@ -279,67 +189,180 @@ fn get_shell_name(reg: &RegItem) -> String {
                 Some(s.to_string())
             }
         });
-    muiverb.unwrap_or(path_name)
+    if let Some(muiverb) = muiverb
+        && !muiverb.trim().is_empty()
+    {
+        return muiverb;
+    }
+
+    if let Some(clsid) = reg.get_guid()
+        && let Some(cls_name) = get_cls_name(&clsid)
+    {
+        return cls_name;
+    }
+    path_name
 }
 
-fn from_shell(reg: &RegItem) -> anyhow::Result<MenuItem> {
-    let info = MenuItemInfo {
-        icon: get_ico_from_reg(reg),
-        publisher_display_name: String::new(),
-        description: String::new(),
-        types: vec![],
-        install_path: String::new(),
-        family_name: String::new(),
-        full_name: String::new(),
-        reg: Some(reg.clone()),
-    };
-    let name = get_shell_name(reg);
-    let menu = MenuItem {
-        id: reg.path.clone(),
-        name,
-        enabled: true,
-        info: Some(info),
-    };
+fn from_shell(reg: &RegItem, guid: &GuidManager) -> anyhow::Result<MenuItem> {
+    if let Some(guid_key) = reg.get_guid()
+        && let Some(item) = from_guid(guid_key.as_str(), reg, guid)
+    {
+        Ok(item)
+    } else {
+        let info = MenuItemInfo {
+            icon: get_ico_from_reg(reg),
+            publisher_display_name: String::new(),
+            description: String::new(),
+            types: vec![],
+            install_path: String::new(),
+            family_name: String::new(),
+            full_name: String::new(),
+            reg: Some(reg.clone()),
+        };
+        let mut name = get_shell_name(reg);
+        if is_clsid(&name)
+            && let Some(cls_name) = get_cls_name(&name)
+        {
+            name = cls_name;
+        }
+        let menu = MenuItem {
+            id: reg.path.clone(),
+            name,
+            enabled: true,
+            info: Some(info),
+        };
 
-    Ok(menu)
+        Ok(menu)
+    }
 }
 
-fn load_shells(path: &str) -> anyhow::Result<Vec<MenuItem>> {
+fn get_cls_name(name: &str) -> Option<String> {
+    let name = if is_clsid(name) {
+        name.to_string()
+    } else {
+        format!("{{{name}}}")
+    };
+    let reg = RegItem::from_path(&format!(r"CLSID\{name}")).ok()?;
+    reg.values.get("LocalizedString").or(reg.values.get("")).cloned()
+}
+
+fn is_clsid(name: &str) -> bool {
+    name.starts_with('{') && name.ends_with('}')
+}
+
+fn from_guid(key: &str, reg: &RegItem, guid: &GuidManager) -> Option<MenuItem> {
+    if let Some(item) = guid.get_item(key.to_lowercase().as_str()) {
+        let info = MenuItemInfo {
+            icon: item.icon.clone().and_then(|s| get_ico_from_str(&s)),
+            publisher_display_name: String::new(),
+            description: String::new(),
+            types: vec![],
+            install_path: String::new(),
+            family_name: String::new(),
+            full_name: String::new(),
+            reg: Some(reg.clone()),
+        };
+        let mut name = item
+            .res_text
+            .clone()
+            .and_then(|s| get_dll_txt(&s))
+            .unwrap_or(item.text.clone().unwrap_or(get_shell_name(reg)));
+
+        if is_clsid(&name)
+            && let Some(cls_name) = get_cls_name(&name)
+        {
+            name = cls_name;
+        }
+
+        let menu = MenuItem {
+            id: reg.path.clone(),
+            name,
+            enabled: true,
+            info: Some(info),
+        };
+        return Some(menu);
+    }
+    None
+}
+fn from_shell_ex(reg: &RegItem, guid: &GuidManager) -> anyhow::Result<MenuItem> {
+    if let Some(guid_key) = reg.get_guid()
+        && let Some(item) = from_guid(guid_key.as_str(), reg, guid)
+    {
+        Ok(item)
+    } else {
+        let info = MenuItemInfo {
+            icon: get_ico_from_reg(reg),
+            publisher_display_name: String::new(),
+            description: String::new(),
+            types: vec![],
+            install_path: String::new(),
+            family_name: String::new(),
+            full_name: String::new(),
+            reg: Some(reg.clone()),
+        };
+        let mut name = get_shell_name(reg);
+        if is_clsid(&name)
+            && let Some(cls_name) = get_cls_name(&name)
+        {
+            name = cls_name;
+        }
+        let menu = MenuItem {
+            id: reg.path.clone(),
+            name,
+            enabled: true,
+            info: Some(info),
+        };
+        Ok(menu)
+    }
+}
+
+fn load_shell(path: &str, guid: &GuidManager) -> anyhow::Result<Vec<MenuItem>> {
     let root = RegItem::from_path(path)?;
     let mut v = vec![];
     for i in root.children {
-        // FIXME: skip no title item
-        // let set: HashSet<_> = i.values.keys().collect();
-        // if !["", "MuiVerb", "MUIVerb"]
-        //     .iter()
-        //     .any(|k| set.contains(&k.to_string()))
-        // {
-        //     continue;
-        // }
-
-        if let Ok(menu) = from_shell(&i) {
+        if let Ok(menu) = from_shell(&i, guid) {
             v.push(menu);
         }
-        println!("{}", v.len());
     }
+    Ok(v)
+}
+
+fn load_shellex(path: &str, guid: &GuidManager) -> anyhow::Result<Vec<MenuItem>> {
+    let root = RegItem::from_path(path)?;
+    let mut v = vec![];
+    for ex in [
+        "ContextMenuHandlers",
+        "DragDropHandlers",
+        "CopyHookHandlers",
+        "PropertySheetHandlers",
+    ] {
+        for i in root.get_child(ex).iter() {
+            for reg in &i.children {
+                if let Ok(menu) = from_shell_ex(reg, guid) {
+                    v.push(menu);
+                }
+            }
+        }
+    }
+
     Ok(v)
 }
 
 pub fn list() -> Vec<MenuItem> {
     let v = load_all().unwrap_or_default();
-    // let mut backup = get_backup();
+    let mut backup = get_backup();
 
-    // for i in backup.iter_mut() {
-    //     i.enabled = false;
-    // }
+    for i in backup.iter_mut() {
+        i.enabled = false;
+    }
 
-    // for item in v {
-    //     if let Some(i) = backup.iter_mut().find(|i| i.id == item.id) {
-    //         i.enabled = true;
-    //     }
-    // }
+    for item in v {
+        if let Some(i) = backup.iter_mut().find(|i| i.id == item.id) {
+            i.enabled = true;
+        }
+    }
 
-    v
+    backup
 }
 
 pub fn disable(id: &str) -> Result<(), anyhow::Error> {
@@ -377,6 +400,7 @@ mod test {
             "@%SystemRoot%\\system32\\cscui.dll,-7006",
             "@%SystemRoot%\\System32\\fvewiz.dll,-970",
             "@efscore.dll,-103",
+            "@%SystemRoot%\\system32\\shell32.dll,-30309",
         ] {
             let txt = super::get_dll_txt(i);
             assert!(txt.is_some())

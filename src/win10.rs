@@ -5,6 +5,8 @@ use crate::MenuItem;
 use crate::MenuItemInfo;
 use crate::RegItem;
 use crate::SceneType;
+use cached::SizedCache;
+use cached::proc_macro::cached;
 use std::collections::HashSet;
 use strum::IntoEnumIterator;
 use windows::Win32::System::SystemInformation::GetWindowsDirectoryW;
@@ -75,7 +77,7 @@ fn load_all() -> anyhow::Result<Vec<MenuItem>, anyhow::Error> {
     set_backup(&v);
     Ok(v)
 }
-
+#[cached]
 fn get_system_directory() -> String {
     use std::ffi::OsString;
     use std::os::windows::ffi::OsStringExt;
@@ -88,7 +90,7 @@ fn get_system_directory() -> String {
         path.to_string_lossy().to_string() + "/"
     }
 }
-
+#[cached]
 fn get_windows_directory() -> String {
     use std::ffi::OsString;
     use std::os::windows::ffi::OsStringExt;
@@ -100,12 +102,20 @@ fn get_windows_directory() -> String {
         path.to_string_lossy().to_string()
     }
 }
-
+#[cached(
+    ty = "SizedCache<String, Option<String>>",
+    create = "{ SizedCache::with_size(100) }",
+    convert = r#"{ format!("{}", s) }"#
+)]
 fn get_dll_txt(s: &str) -> Option<String> {
     let (dll, id) = parse_reg_path(s)?;
     exeico::get_dll_txt(dll, id).ok()
 }
-
+#[cached(
+    ty = "SizedCache<String, Option<Vec<u8>>>",
+    create = "{ SizedCache::with_size(100) }",
+    convert = r#"{ format!("{}", s) }"#
+)]
 fn get_ico_from_str(s: &str) -> Option<Vec<u8>> {
     if s.is_empty() {
         return None;
@@ -148,7 +158,11 @@ fn get_ico_from_reg(reg: &RegItem) -> Option<Vec<u8>> {
     }
     None
 }
-
+#[cached(
+    ty = "SizedCache<String, String>",
+    create = "{ SizedCache::with_size(100) }",
+    convert = r#"{ format!("{}", path) }"#
+)]
 fn parse_path(path: &str) -> String {
     let path = path.to_lowercase();
     if path.starts_with("@%systemroot%") {
@@ -235,7 +249,11 @@ fn from_shell(reg: &RegItem, guid: &GuidManager) -> anyhow::Result<MenuItem> {
         Ok(menu)
     }
 }
-
+#[cached(
+    ty = "SizedCache<String, Option<String>>",
+    create = "{ SizedCache::with_size(100) }",
+    convert = r#"{ format!("{}", name) }"#
+)]
 fn get_cls_name(name: &str) -> Option<String> {
     let name = if is_clsid(name) {
         name.to_string()
@@ -243,7 +261,16 @@ fn get_cls_name(name: &str) -> Option<String> {
         format!("{{{name}}}")
     };
     let reg = RegItem::from_path(&format!(r"CLSID\{name}")).ok()?;
-    reg.values.get("LocalizedString").or(reg.values.get("")).cloned()
+    let cls_name = reg
+        .values
+        .get("LocalizedString")
+        .or(reg.values.get(""))
+        .cloned()?;
+
+    if cls_name.starts_with("@") || cls_name.starts_with('%') || cls_name.contains(",-") {
+        return get_dll_txt(&cls_name);
+    }
+    Some(cls_name)
 }
 
 fn is_clsid(name: &str) -> bool {

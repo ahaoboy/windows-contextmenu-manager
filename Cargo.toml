@@ -48,7 +48,8 @@ exeico = { version = "0.1", git = "https://github.com/ahaoboy/exeico" }
 path-clean = "1"
 base64 = "0.22"
 which = "8"
-regex = "*"
+regex = "1"
+cached = "0.55"
 
 [profile.release]
 debug = false

@@ -144,10 +144,10 @@ fn get_ico_from_reg(reg: &RegItem) -> Option<Vec<u8>> {
             k
         };
         if let Ok(exe_path) = which::which(exe) {
-            return exeico::get_exe_ico(exe_path).ok();
+            return exeico::get_dll_icos(exe_path).ok()?.first().cloned();
         }
 
-        return exeico::get_exe_ico(parse_path(exe)).ok();
+        return exeico::get_dll_icos(parse_path(exe)).ok()?.first().cloned();
     };
 
     // find first icon in children
@@ -232,7 +232,7 @@ fn from_shell(reg: &RegItem, guid: &GuidManager) -> anyhow::Result<MenuItem> {
             family_name: String::new(),
             full_name: String::new(),
             reg: Some(reg.clone()),
-            reg_txt: Some(reg.to_reg_txt())
+            reg_txt: Some(reg.to_reg_txt()),
         };
         let mut name = get_shell_name(reg);
         if is_clsid(&name)
@@ -289,7 +289,7 @@ fn from_guid(key: &str, reg: &RegItem, guid: &GuidManager) -> Option<MenuItem> {
             family_name: String::new(),
             full_name: String::new(),
             reg: Some(reg.clone()),
-            reg_txt: Some(reg.to_reg_txt())
+            reg_txt: Some(reg.to_reg_txt()),
         };
         let mut name = item
             .res_text
@@ -328,7 +328,7 @@ fn from_shell_ex(reg: &RegItem, guid: &GuidManager) -> anyhow::Result<MenuItem> 
             family_name: String::new(),
             full_name: String::new(),
             reg: Some(reg.clone()),
-            reg_txt: Some(reg.to_reg_txt())
+            reg_txt: Some(reg.to_reg_txt()),
         };
         let mut name = get_shell_name(reg);
         if is_clsid(&name)

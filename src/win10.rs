@@ -232,6 +232,7 @@ fn from_shell(reg: &RegItem, guid: &GuidManager) -> anyhow::Result<MenuItem> {
             family_name: String::new(),
             full_name: String::new(),
             reg: Some(reg.clone()),
+            reg_txt: Some(reg.to_reg_txt())
         };
         let mut name = get_shell_name(reg);
         if is_clsid(&name)
@@ -288,6 +289,7 @@ fn from_guid(key: &str, reg: &RegItem, guid: &GuidManager) -> Option<MenuItem> {
             family_name: String::new(),
             full_name: String::new(),
             reg: Some(reg.clone()),
+            reg_txt: Some(reg.to_reg_txt())
         };
         let mut name = item
             .res_text
@@ -326,6 +328,7 @@ fn from_shell_ex(reg: &RegItem, guid: &GuidManager) -> anyhow::Result<MenuItem> 
             family_name: String::new(),
             full_name: String::new(),
             reg: Some(reg.clone()),
+            reg_txt: Some(reg.to_reg_txt())
         };
         let mut name = get_shell_name(reg);
         if is_clsid(&name)

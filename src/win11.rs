@@ -240,6 +240,7 @@ pub fn list(scope: Scope) -> Vec<MenuItem> {
                         family_name: family_name.clone(),
                         full_name: full_name.clone(),
                         reg: None,
+                        reg_txt: None,
                     });
 
                     v.push(MenuItem {

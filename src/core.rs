@@ -91,6 +91,8 @@ pub struct MenuItemInfo {
     pub full_name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reg: Option<RegItem>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reg_txt: Option<String>,
 }
 
 use base64::{Engine as _, engine::general_purpose};
@@ -337,6 +339,29 @@ impl RegItem {
         }
         reg_key.delete_subkey_with_flags("", KEY_WRITE)?;
         Ok(())
+    }
+
+    pub fn to_reg_txt(&self) -> String {
+        fn escape_str(s: &str) -> String {
+            s.replace("\\", "\\\\").replace("\"", "\\\"")
+        }
+        fn write_item(item: &RegItem, out: &mut String) {
+            out.push_str(&format!("\n[HKEY_CLASSES_ROOT\\{}]\n", item.path));
+            for (name, value) in &item.values {
+                let line = if name.is_empty() {
+                    format!("\"{}\"\n", escape_str(value))
+                } else {
+                    format!("\"{}\"=\"{}\"\n", escape_str(name), escape_str(value))
+                };
+                out.push_str(&line);
+            }
+            for child in &item.children {
+                write_item(child, out);
+            }
+        }
+        let mut out = String::from("Windows Registry Editor Version 5.00\n");
+        write_item(self, &mut out);
+        out
     }
 }
 

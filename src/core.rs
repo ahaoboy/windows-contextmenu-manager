@@ -5,6 +5,7 @@ use strum_macros::Display;
 use strum_macros::EnumIter;
 use strum_macros::EnumString;
 use tempfile::NamedTempFile;
+use windows::Win32::System::Threading::CREATE_NO_WINDOW;
 use winreg::HKEY;
 use winreg::RegKey;
 use winreg::enums::*;
@@ -192,6 +193,7 @@ use std::process::Stdio;
 
 pub fn restart_explorer() {
     let _ = Command::new("taskkill")
+        .creation_flags(CREATE_NO_WINDOW.0)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .arg("/f")
@@ -481,6 +483,7 @@ impl GuidManager {
         self.items.get(guid)
     }
 }
+use std::os::windows::process::CommandExt;
 
 pub fn export_reg(reg_path: &str) -> io::Result<Vec<u8>> {
     let temp_file = NamedTempFile::new()?;
@@ -494,8 +497,9 @@ pub fn export_reg(reg_path: &str) -> io::Result<Vec<u8>> {
 
     let status = Command::new("reg")
         .args(["export", &full_path, &temp_path, "/y"])
-        // .stdout(Stdio::null())
-        // .stderr(Stdio::null())
+        .creation_flags(CREATE_NO_WINDOW.0)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .status()?;
 
     if !status.success() {

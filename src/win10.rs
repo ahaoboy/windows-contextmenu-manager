@@ -381,7 +381,7 @@ fn load_edge(root: SceneRoot, path: &str) -> anyhow::Result<Vec<MenuItem>> {
     };
     let menu = MenuItem {
         id: path.to_string(),
-        name: root.path,
+        name: get_shell_name(&root),
         enabled: true,
         info: Some(info),
     };

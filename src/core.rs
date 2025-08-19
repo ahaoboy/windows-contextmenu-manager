@@ -610,32 +610,32 @@ impl SceneType {
 
         match self {
             SceneType::Shell => &[
-                (HKCU, r"*\Shell"),
-                (HKCU, r"Folder\shell"),
-                (HKCU, r"Directory\Background\Shell"),
-                (HKCU, r"Directory\Shell"),
-                (HKCU, r"DesktopBackground\Shell"),
-                (HKCU, r"Drive\Shell"),
-                (HKCU, r"AllFilesystemObjects\Shell"),
-                (HKCU, r"LibraryFolder\Shell"),
-                (HKCU, r"UserLibraryFolder\Shell"),
-                (HKCU, r"Launcher.ImmersiveApplication\Shell"),
-                (HKCU, r"LibraryFolder\Background\Shell"),
-                (HKCU, r"CLSID\{20D04FE0-3AEA-1069-A2D8-08002B30309D}\shell"), // Computer
-                (HKCU, r"CLSID\{645FF040-5081-101B-9F08-00AA002F954E}\Shell"), // RecycleBin
-                (HKCU, r"CLSID\{645FF040-5081-101B-9F08-00AA002F954E}\Shell"), // RecycleBin
+                (HKCR, r"*\Shell"),
+                (HKCR, r"Folder\shell"),
+                (HKCR, r"Directory\Background\Shell"),
+                (HKCR, r"Directory\Shell"),
+                (HKCR, r"DesktopBackground\Shell"),
+                (HKCR, r"Drive\Shell"),
+                (HKCR, r"AllFilesystemObjects\Shell"),
+                (HKCR, r"LibraryFolder\Shell"),
+                (HKCR, r"UserLibraryFolder\Shell"),
+                (HKCR, r"Launcher.ImmersiveApplication\Shell"),
+                (HKCR, r"LibraryFolder\Background\Shell"),
+                (HKCR, r"CLSID\{20D04FE0-3AEA-1069-A2D8-08002B30309D}\shell"), // Computer
+                (HKCR, r"CLSID\{645FF040-5081-101B-9F08-00AA002F954E}\Shell"), // RecycleBin
+                (HKCR, r"CLSID\{645FF040-5081-101B-9F08-00AA002F954E}\Shell"), // RecycleBin
             ],
             SceneType::ShellEx => &[
-                (HKCU, r"*\ShellEx"),
-                (HKCU, r"Folder\ShellEx"),
-                (HKCU, r"Directory\Background\ShellEx"),
-                (HKCU, r"Directory\ShellEx"),
-                (HKCU, r"DesktopBackground\ShellEx"),
-                (HKCU, r"Drive\ShellEx"),
-                (HKCU, r"LibraryFolder\Background\ShellEx"),
-                (HKCU, r"UserLibraryFolder\ShellEx"),
-                (HKCU, r"Launcher.ImmersiveApplication\ShellEx"),
-                (HKCU, r"LibraryFolder\ShellEx"),
+                (HKCR, r"*\ShellEx"),
+                (HKCR, r"Folder\ShellEx"),
+                (HKCR, r"Directory\Background\ShellEx"),
+                (HKCR, r"Directory\ShellEx"),
+                (HKCR, r"DesktopBackground\ShellEx"),
+                (HKCR, r"Drive\ShellEx"),
+                (HKCR, r"LibraryFolder\Background\ShellEx"),
+                (HKCR, r"UserLibraryFolder\ShellEx"),
+                (HKCR, r"Launcher.ImmersiveApplication\ShellEx"),
+                (HKCR, r"LibraryFolder\ShellEx"),
                 (
                     HKCU,
                     r"CLSID\{20D04FE0-3AEA-1069-A2D8-08002B30309D}\ShellEx",

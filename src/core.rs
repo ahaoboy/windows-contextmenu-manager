@@ -335,6 +335,8 @@ pub struct RegItem {
 
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<RegItem>,
+
+    pub root: SceneRoot,
 }
 
 fn split_bytes(data: &[u8]) -> Vec<&[u8]> {
@@ -444,6 +446,7 @@ impl RegItem {
             path: path.to_string(),
             values,
             children,
+            root,
         })
     }
 
@@ -462,7 +465,7 @@ impl RegItem {
         if !self.is_safe() {
             return;
         }
-        let root = RegKey::predef(HKEY_CLASSES_ROOT);
+        let root = RegKey::predef(self.root.get_reg());
         if let Ok((key, _disp)) = root.create_subkey(&self.path) {
             for (name, value) in &self.values {
                 value.write(&key, name);
@@ -477,7 +480,7 @@ impl RegItem {
         if !self.is_safe() {
             return Ok(());
         }
-        let reg_key = RegKey::predef(HKEY_CLASSES_ROOT)
+        let reg_key = RegKey::predef(self.root.get_reg())
             .open_subkey_with_flags(self.path.clone(), KEY_WRITE)?;
         for i in &self.children {
             let _ = i.delete();

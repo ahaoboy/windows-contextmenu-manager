@@ -1,5 +1,6 @@
 use serde::Serialize;
 use std::collections::HashMap;
+use std::fmt::Display;
 use strum::IntoEnumIterator;
 use strum_macros::Display;
 use strum_macros::EnumIter;
@@ -8,6 +9,7 @@ use tempfile::NamedTempFile;
 use windows::Win32::System::Threading::CREATE_NO_WINDOW;
 use winreg::HKEY;
 use winreg::RegKey;
+use winreg::RegValue;
 use winreg::enums::*;
 
 pub const APP_NAME: &str = "windows-contextmenu-manager";
@@ -222,15 +224,153 @@ impl Type {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub enum RegItemValue {
+    SZ(String),
+    DWORD(u32),
+    ExpandSz(Vec<u8>),
+    MultiSz(String),
+    QWORD(u64),
+    BINARY(Vec<u8>),
+}
+
+fn parse_dword(value: &RegValue) -> Option<u32> {
+    if value.vtype == RegType::REG_DWORD && value.bytes.len() == 4 {
+        let mut arr = [0u8; 4];
+        arr.copy_from_slice(&value.bytes);
+        Some(u32::from_le_bytes(arr))
+    } else {
+        None
+    }
+}
+fn parse_qword(value: &RegValue) -> Option<u64> {
+    if value.vtype == RegType::REG_QWORD && value.bytes.len() == 8 {
+        let mut arr = [0u8; 8];
+        arr.copy_from_slice(&value.bytes);
+        Some(u64::from_le_bytes(arr))
+    } else {
+        None
+    }
+}
+impl TryFrom<RegValue> for RegItemValue {
+    type Error = anyhow::Error;
+
+    fn try_from(value: RegValue) -> Result<Self, Self::Error> {
+        let v = match value.vtype {
+            REG_SZ => RegItemValue::SZ(value.to_string()),
+            REG_EXPAND_SZ => RegItemValue::ExpandSz(value.bytes.to_vec()),
+            REG_MULTI_SZ => RegItemValue::MultiSz(value.to_string()),
+            REG_DWORD => RegItemValue::DWORD(parse_dword(&value).expect("parse_dword error")),
+            REG_QWORD => RegItemValue::QWORD(parse_qword(&value).expect("parse_qword error")),
+            REG_BINARY => RegItemValue::BINARY(value.bytes),
+            REG_NONE => todo!(),
+            REG_DWORD_BIG_ENDIAN => todo!(),
+            REG_LINK => todo!(),
+            REG_RESOURCE_LIST => todo!(),
+            REG_FULL_RESOURCE_DESCRIPTOR => todo!(),
+            REG_RESOURCE_REQUIREMENTS_LIST => todo!(),
+        };
+        Ok(v)
+    }
+}
+
+impl RegItemValue {
+    fn write(&self, key: &RegKey, name: &str) {
+        let _ = match self {
+            RegItemValue::SZ(v) => key.set_value(name, v),
+            RegItemValue::DWORD(v) => key.set_value(name, v),
+            RegItemValue::ExpandSz(bytes) => {
+                let data = RegValue {
+                    vtype: REG_EXPAND_SZ,
+                    bytes: bytes.to_vec(),
+                };
+                key.set_raw_value(name, &data)
+            }
+            RegItemValue::MultiSz(v) => key.set_value(name, v),
+            RegItemValue::QWORD(v) => key.set_value(name, v),
+            RegItemValue::BINARY(bytes) => {
+                let data = RegValue {
+                    vtype: REG_BINARY,
+                    bytes: bytes.to_vec(),
+                };
+                key.set_raw_value(name, &data)
+            }
+        };
+    }
+}
+
+impl Display for RegItemValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            RegItemValue::SZ(v) => v.to_string(),
+            RegItemValue::DWORD(v) => v.to_string(),
+            RegItemValue::ExpandSz(v) => String::from_utf16(
+                &v.chunks(2)
+                    .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                    .take_while(|&u| u != 0)
+                    .collect::<Vec<u16>>(),
+            )
+            .expect("ExpandSz format error"),
+            RegItemValue::MultiSz(v) => v.to_string(),
+            RegItemValue::QWORD(v) => v.to_string(),
+            RegItemValue::BINARY(bytes) => {
+                let hex: Vec<_> = bytes.iter().map(|b| format!("{b:02x}")).collect();
+                format!("0x{}", hex.join(""))
+            }
+        };
+        f.write_str(&s)
+    }
+}
+
+fn escape_str(s: &str) -> String {
+    s.replace("\\", "\\\\").replace("\"", "\\\"")
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub struct RegItem {
     pub path: String,
 
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub values: HashMap<String, String>,
+    pub values: HashMap<String, RegItemValue>,
 
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<RegItem>,
+}
+
+fn split_bytes(data: &[u8]) -> Vec<&[u8]> {
+    let mut groups = Vec::new();
+
+    if data.len() <= 23 {
+        groups.push(data);
+        return groups;
+    }
+
+    groups.push(&data[..23]);
+
+    let mut i = 23;
+    while i < data.len() {
+        let end = usize::min(i + 25, data.len());
+        groups.push(&data[i..end]);
+        i += 25;
+    }
+
+    groups
+}
+
+fn to_hex_line(bytes: &[u8], hex_type: u32) -> String {
+    let mut s = if hex_type == 0 {
+        String::from("hex:")
+    } else {
+        format!("hex({hex_type}):")
+    };
+
+    let mut v = vec![];
+    for i in split_bytes(bytes) {
+        let hex: Vec<_> = i.iter().map(|b| format!("{b:02x}")).collect();
+        v.push(hex.join(","));
+    }
+    s.push_str(&v.join(",\\\n  "));
+    s
 }
 
 impl RegItem {
@@ -242,7 +382,7 @@ impl RegItem {
 
     pub fn get_guid(&self) -> Option<String> {
         for i in ["CommandStateHandler", "DelegateExecute", "CLSID"] {
-            if let Some(value) = self.values.get(i)
+            if let Some(RegItemValue::SZ(value)) = self.values.get(i)
                 && value.starts_with("{")
                 && value.ends_with("}")
             {
@@ -268,32 +408,35 @@ impl RegItem {
         let guid_re = regex::Regex::new(r"(?i)[A-F0-9]{8}(-[A-F0-9]{4}){3}-[A-F0-9]{12}").unwrap();
 
         for i in [
-            self.path.as_str(),
-            self.values.get("").map_or("", |v| v),
-            self.values.get("CLSID").map_or("", |v| v),
+            self.path.clone(),
+            self.values
+                .get("")
+                .map_or("".to_string(), |v| v.to_string()),
+            self.values
+                .get("CLSID")
+                .map_or("".to_string(), |v| v.to_string()),
         ] {
-            if let Some(cap) = guid_re.find_iter(i).next() {
+            if let Some(cap) = guid_re.find_iter(&i).next() {
                 return Some(cap.as_str().to_string());
             }
         }
 
         None
     }
-    pub fn from_path(path: &str) -> io::Result<RegItem> {
-        let reg_key = RegKey::predef(HKEY_CLASSES_ROOT).open_subkey(path)?;
+    pub fn from_path(root: SceneRoot, path: &str) -> io::Result<RegItem> {
+        let reg_key = RegKey::predef(root.get_reg()).open_subkey(path)?;
 
         let mut values = HashMap::new();
-        for value_name in reg_key.enum_values().map(|x| x.unwrap().0) {
-            let value = reg_key.get_value::<String, _>(&value_name);
-            if let Ok(val) = value {
-                values.insert(value_name, val);
+        for (name, value) in reg_key.enum_values().flatten() {
+            if let Ok(item_value) = RegItemValue::try_from(value) {
+                values.insert(name.clone(), item_value);
             }
         }
 
         let mut children: Vec<RegItem> = Vec::new();
         for subkey_name in reg_key.enum_keys().map(|x| x.unwrap()) {
             let subkey_path = format!("{path}\\{subkey_name}");
-            let subkey_item = RegItem::from_path(&subkey_path)?;
+            let subkey_item = RegItem::from_path(root, &subkey_path)?;
             children.push(subkey_item);
         }
 
@@ -306,7 +449,7 @@ impl RegItem {
 
     fn is_safe(&self) -> bool {
         for scene_type in SceneType::iter() {
-            for reg_path in scene_type.registry_path() {
+            for (_, reg_path) in scene_type.registry_path() {
                 if self.path.starts_with(reg_path) {
                     return true;
                 }
@@ -322,7 +465,7 @@ impl RegItem {
         let root = RegKey::predef(HKEY_CLASSES_ROOT);
         if let Ok((key, _disp)) = root.create_subkey(&self.path) {
             for (name, value) in &self.values {
-                let _ = key.set_value(name.as_str(), value);
+                value.write(&key, name);
             }
             for child in &self.children {
                 child.write();
@@ -344,17 +487,24 @@ impl RegItem {
     }
 
     pub fn to_reg_txt(&self) -> String {
-        fn escape_str(s: &str) -> String {
-            s.replace("\\", "\\\\").replace("\"", "\\\"")
-        }
         fn write_item(item: &RegItem, out: &mut String) {
             out.push_str(&format!("\n[HKEY_CLASSES_ROOT\\{}]\n", item.path));
             for (name, value) in &item.values {
-                let line = if name.is_empty() {
-                    format!("\"{}\"\n", escape_str(value))
+                let key = if name.is_empty() {
+                    "@".to_string()
                 } else {
-                    format!("\"{}\"=\"{}\"\n", escape_str(name), escape_str(value))
+                    format!(r#""{}""#, escape_str(name))
                 };
+
+                let v = match value {
+                    RegItemValue::SZ(v) => format!(r#""{}""#, escape_str(v)),
+                    RegItemValue::DWORD(v) => format!("dword:{v:08x}"),
+                    RegItemValue::QWORD(v) => format!("qword:{v:016x}"),
+                    RegItemValue::ExpandSz(v) => escape_str(&to_hex_line(v, 2)),
+                    RegItemValue::MultiSz(v) => escape_str(v),
+                    RegItemValue::BINARY(v) => to_hex_line(v, 0),
+                };
+                let line = format!("{key}={v}\n");
                 out.push_str(&line);
             }
             for child in &item.children {
@@ -364,6 +514,40 @@ impl RegItem {
         let mut out = String::from("Windows Registry Editor Version 5.00\n");
         write_item(self, &mut out);
         out
+    }
+}
+
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    Deserialize,
+    Serialize,
+    EnumIter,
+    EnumString,
+    Display,
+)]
+pub enum SceneRoot {
+    #[default]
+    /// HKEY_CLASSES_ROOT
+    HKCR,
+    /// HKEY_CURRENT_USER
+    HKCU,
+    /// HKEY_LOCAL_MACHINE
+    HKLM,
+}
+
+impl SceneRoot {
+    pub fn get_reg(&self) -> HKEY {
+        match self {
+            SceneRoot::HKCR => HKEY_CLASSES_ROOT,
+            SceneRoot::HKCU => HKEY_CURRENT_USER,
+            SceneRoot::HKLM => HKEY_LOCAL_MACHINE,
+        }
     }
 }
 
@@ -417,39 +601,53 @@ pub(crate) enum SceneType {
     #[default]
     Shell,
     ShellEx,
+    Edge,
 }
 
 impl SceneType {
-    pub fn registry_path(&self) -> &[&'static str] {
+    pub fn registry_path(&self) -> &[(SceneRoot, &'static str)] {
+        use SceneRoot::*;
+
         match self {
             SceneType::Shell => &[
-                r"*\Shell",
-                r"Folder\shell",
-                r"Directory\Background\Shell",
-                r"Directory\Shell",
-                r"DesktopBackground\Shell",
-                r"Drive\Shell",
-                r"AllFilesystemObjects\Shell",
-                r"LibraryFolder\Shell",
-                r"UserLibraryFolder\Shell",
-                r"Launcher.ImmersiveApplication\Shell",
-                r"LibraryFolder\Background\Shell",
-                r"CLSID\{20D04FE0-3AEA-1069-A2D8-08002B30309D}\shell", // Computer
-                r"CLSID\{645FF040-5081-101B-9F08-00AA002F954E}\Shell", // RecycleBin
+                (HKCU, r"*\Shell"),
+                (HKCU, r"Folder\shell"),
+                (HKCU, r"Directory\Background\Shell"),
+                (HKCU, r"Directory\Shell"),
+                (HKCU, r"DesktopBackground\Shell"),
+                (HKCU, r"Drive\Shell"),
+                (HKCU, r"AllFilesystemObjects\Shell"),
+                (HKCU, r"LibraryFolder\Shell"),
+                (HKCU, r"UserLibraryFolder\Shell"),
+                (HKCU, r"Launcher.ImmersiveApplication\Shell"),
+                (HKCU, r"LibraryFolder\Background\Shell"),
+                (HKCU, r"CLSID\{20D04FE0-3AEA-1069-A2D8-08002B30309D}\shell"), // Computer
+                (HKCU, r"CLSID\{645FF040-5081-101B-9F08-00AA002F954E}\Shell"), // RecycleBin
+                (HKCU, r"CLSID\{645FF040-5081-101B-9F08-00AA002F954E}\Shell"), // RecycleBin
             ],
             SceneType::ShellEx => &[
-                r"*\ShellEx",
-                r"Folder\ShellEx",
-                r"Directory\Background\ShellEx",
-                r"Directory\ShellEx",
-                r"DesktopBackground\ShellEx",
-                r"Drive\ShellEx",
-                r"LibraryFolder\Background\ShellEx",
-                r"UserLibraryFolder\ShellEx",
-                r"Launcher.ImmersiveApplication\ShellEx",
-                r"LibraryFolder\ShellEx",
-                r"CLSID\{20D04FE0-3AEA-1069-A2D8-08002B30309D}\ShellEx", // Computer
-                r"CLSID\{645FF040-5081-101B-9F08-00AA002F954E}\ShellEx", // RecycleBin
+                (HKCU, r"*\ShellEx"),
+                (HKCU, r"Folder\ShellEx"),
+                (HKCU, r"Directory\Background\ShellEx"),
+                (HKCU, r"Directory\ShellEx"),
+                (HKCU, r"DesktopBackground\ShellEx"),
+                (HKCU, r"Drive\ShellEx"),
+                (HKCU, r"LibraryFolder\Background\ShellEx"),
+                (HKCU, r"UserLibraryFolder\ShellEx"),
+                (HKCU, r"Launcher.ImmersiveApplication\ShellEx"),
+                (HKCU, r"LibraryFolder\ShellEx"),
+                (
+                    HKCU,
+                    r"CLSID\{20D04FE0-3AEA-1069-A2D8-08002B30309D}\ShellEx",
+                ), // Computer
+                (
+                    HKCU,
+                    r"CLSID\{645FF040-5081-101B-9F08-00AA002F954E}\ShellEx",
+                ), // RecycleBin
+            ],
+            SceneType::Edge => &[
+                (HKCU, r"SOFTWARE\Policies\Microsoft\Edge"),
+                (HKLM, r"SOFTWARE\Policies\Microsoft\Edge"),
             ],
         }
     }

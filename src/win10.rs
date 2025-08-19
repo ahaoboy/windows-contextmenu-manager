@@ -4,6 +4,8 @@ use crate::GuidManager;
 use crate::MenuItem;
 use crate::MenuItemInfo;
 use crate::RegItem;
+use crate::RegItemValue;
+use crate::SceneRoot;
 use crate::SceneType;
 use cached::SizedCache;
 use cached::proc_macro::cached;
@@ -61,14 +63,20 @@ fn load_all() -> anyhow::Result<Vec<MenuItem>, anyhow::Error> {
     for scene in SceneType::iter() {
         match scene {
             SceneType::Shell => {
-                for i in scene.registry_path() {
-                    let items = load_shell(i, &guid).unwrap_or_default();
+                for (root, i) in scene.registry_path() {
+                    let items = load_shell(*root, i, &guid).unwrap_or_default();
                     v.extend(items);
                 }
             }
             SceneType::ShellEx => {
-                for i in scene.registry_path() {
-                    let items = load_shellex(i, &guid).unwrap_or_default();
+                for (root, i) in scene.registry_path() {
+                    let items = load_shellex(*root, i, &guid).unwrap_or_default();
+                    v.extend(items);
+                }
+            }
+            SceneType::Edge => {
+                for (root, i) in scene.registry_path() {
+                    let items = load_edge(*root, i).unwrap_or_default();
                     v.extend(items);
                 }
             }
@@ -128,15 +136,15 @@ fn get_ico_from_str(s: &str) -> Option<Vec<u8>> {
 }
 
 fn get_ico_from_reg(reg: &RegItem) -> Option<Vec<u8>> {
-    if let Some(icon) = reg.values.get("Icon") {
+    if let Some(RegItemValue::SZ(icon)) = reg.values.get("Icon") {
         return get_ico_from_str(icon);
     }
-    if let Some(icon) = reg.values.get("DefaultIcon") {
+    if let Some(RegItemValue::SZ(icon)) = reg.values.get("DefaultIcon") {
         return get_ico_from_str(icon);
     }
 
     if let Some(child) = reg.get_child("command")
-        && let Some(k) = child.values.get("")
+        && let Some(RegItemValue::SZ(k)) = child.values.get("")
     {
         let exe = if let Some(index) = k.find(" ") {
             &k[..index]
@@ -197,7 +205,10 @@ fn get_shell_name(reg: &RegItem) -> String {
         .or(reg.values.get("MUIVerb"))
         .or(reg.values.get(""))
         .and_then(|s| {
-            if s.starts_with('@') && s.contains(',') {
+            if let RegItemValue::SZ(s) = s
+                && s.starts_with('@')
+                && s.contains(',')
+            {
                 get_dll_txt(s)
             } else {
                 Some(s.to_string())
@@ -261,12 +272,15 @@ fn get_cls_name(name: &str) -> Option<String> {
     } else {
         format!("{{{name}}}")
     };
-    let reg = RegItem::from_path(&format!(r"CLSID\{name}")).ok()?;
-    let cls_name = reg
+    let reg = RegItem::from_path(SceneRoot::HKCR, &format!(r"CLSID\{name}")).ok()?;
+    let RegItemValue::SZ(cls_name) = reg
         .values
         .get("LocalizedString")
         .or(reg.values.get(""))
-        .cloned()?;
+        .cloned()?
+    else {
+        return None;
+    };
 
     if cls_name.starts_with("@") || cls_name.starts_with('%') || cls_name.contains(",-") {
         return get_dll_txt(&cls_name);
@@ -346,8 +360,8 @@ fn from_shell_ex(reg: &RegItem, guid: &GuidManager) -> anyhow::Result<MenuItem> 
     }
 }
 
-fn load_shell(path: &str, guid: &GuidManager) -> anyhow::Result<Vec<MenuItem>> {
-    let root = RegItem::from_path(path)?;
+fn load_shell(root: SceneRoot, path: &str, guid: &GuidManager) -> anyhow::Result<Vec<MenuItem>> {
+    let root = RegItem::from_path(root, path)?;
     let mut v = vec![];
     for i in root.children {
         if let Ok(menu) = from_shell(&i, guid) {
@@ -357,8 +371,26 @@ fn load_shell(path: &str, guid: &GuidManager) -> anyhow::Result<Vec<MenuItem>> {
     Ok(v)
 }
 
-fn load_shellex(path: &str, guid: &GuidManager) -> anyhow::Result<Vec<MenuItem>> {
-    let root = RegItem::from_path(path)?;
+fn load_edge(root: SceneRoot, path: &str) -> anyhow::Result<Vec<MenuItem>> {
+    let root = RegItem::from_path(root, path)?;
+    let mut v = vec![];
+    let info = MenuItemInfo {
+        reg: Some(root.clone()),
+        reg_txt: Some(root.to_reg_txt()),
+        ..Default::default()
+    };
+    let menu = MenuItem {
+        id: path.to_string(),
+        name: root.path,
+        enabled: true,
+        info: Some(info),
+    };
+    v.push(menu);
+    Ok(v)
+}
+
+fn load_shellex(root: SceneRoot, path: &str, guid: &GuidManager) -> anyhow::Result<Vec<MenuItem>> {
+    let root = RegItem::from_path(root, path)?;
     let mut v = vec![];
     for ex in [
         "ContextMenuHandlers",

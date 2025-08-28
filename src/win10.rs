@@ -12,6 +12,8 @@ use cached::proc_macro::cached;
 use std::collections::HashSet;
 use strum::IntoEnumIterator;
 use windows::Win32::System::SystemInformation::GetWindowsDirectoryW;
+use winreg::RegKey;
+use winreg::enums::HKEY_CLASSES_ROOT;
 
 fn get_backup() -> Vec<MenuItem> {
     let Some(d) = dirs::config_local_dir() else {
@@ -88,6 +90,10 @@ fn load_all() -> anyhow::Result<Vec<MenuItem>, anyhow::Error> {
             }
         }
     }
+    if let Ok(items) = load_hkcr_exts() {
+        v.extend(items);
+    }
+
     set_backup(&v);
     Ok(v)
 }
@@ -417,7 +423,7 @@ fn load_shellex(root: SceneRoot, path: &str, guid: &GuidManager) -> anyhow::Resu
     Ok(v)
 }
 
-fn get_ext_info(progid: &str) -> Option<MenuItemInfo> {
+fn get_ext_info(progid: &str, reg: &RegItem) -> Option<MenuItemInfo> {
     let progid = RegItem::from_path(SceneRoot::HKCR, progid).ok()?;
     let icon = get_ico_from_reg(&progid);
 
@@ -452,8 +458,8 @@ fn get_ext_info(progid: &str) -> Option<MenuItemInfo> {
         install_path: String::new(),
         family_name: String::new(),
         full_name: name,
-        reg: Some(progid.clone()),
-        reg_txt: Some(progid.to_reg_txt()),
+        reg: Some(reg.clone()),
+        reg_txt: Some(reg.to_reg_txt()),
     })
 }
 
@@ -462,17 +468,41 @@ fn from_ext(reg: &RegItem) -> anyhow::Result<MenuItem> {
         return Err(anyhow::anyhow!("not found UserChoice"));
     };
 
-    let Some(progid) = user_choice.values.get("Progid") else {
+    let Some(progid) = user_choice
+        .values
+        .get("Progid")
+        .or(user_choice.values.get("ProgId"))
+    else {
         return Err(anyhow::anyhow!("not found Progid"));
     };
 
-    let info = get_ext_info(&progid.to_string());
+    let info = get_ext_info(&progid.to_string(), reg);
     let item = MenuItem {
         id: reg.path.clone(),
         name: info
             .clone()
             .map(|i| i.full_name)
             .unwrap_or(progid.to_string()),
+        enabled: true,
+        info,
+    };
+
+    Ok(item)
+}
+
+fn from_hkcr_ext(name: &str) -> anyhow::Result<MenuItem> {
+    let ext_reg = RegItem::from_path(SceneRoot::HKCR, name)?;
+    let Some(RegItemValue::SZ(app_id)) = ext_reg.values.get("") else {
+        return Err(anyhow::anyhow!("not found app_id"));
+    };
+
+    let info = get_ext_info(app_id, &ext_reg);
+    let item = MenuItem {
+        id: ext_reg.path.clone(),
+        name: info
+            .clone()
+            .map(|i| i.full_name)
+            .unwrap_or(app_id.to_string()),
         enabled: true,
         info,
     };
@@ -488,6 +518,33 @@ fn load_file_exts(root: SceneRoot, path: &str) -> anyhow::Result<Vec<MenuItem>> 
             v.push(menu);
         }
     }
+
+    // HKCR
+    let root = RegKey::predef(HKEY_CLASSES_ROOT);
+    for name in root.enum_keys().flat_map(|x| x.ok()) {
+        if !name.starts_with(".") {
+            continue;
+        }
+        if let Ok(menu) = from_hkcr_ext(&name) {
+            v.push(menu);
+        }
+    }
+
+    Ok(v)
+}
+
+fn load_hkcr_exts() -> anyhow::Result<Vec<MenuItem>> {
+    let mut v = vec![];
+    let root = RegKey::predef(HKEY_CLASSES_ROOT);
+    for name in root.enum_keys().flat_map(|x| x.ok()) {
+        if !name.starts_with(".") {
+            continue;
+        }
+        if let Ok(menu) = from_hkcr_ext(&name) {
+            v.push(menu);
+        }
+    }
+
     Ok(v)
 }
 
@@ -532,7 +589,10 @@ pub fn enable(id: &str) -> Result<(), anyhow::Error> {
 
 #[cfg(test)]
 mod test {
-    use crate::{SceneRoot, win10::load_file_exts};
+    use crate::{
+        SceneRoot,
+        win10::{load_file_exts, load_hkcr_exts},
+    };
 
     #[test]
     fn test_get_dll_txt() {
@@ -570,8 +630,15 @@ mod test {
         let exts = load_file_exts(
             SceneRoot::HKCU,
             r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts",
-        );
+        )
+        .unwrap();
 
-        println!("{:#?}", exts.iter().len());
+        println!("{:#?}", exts.len());
+    }
+
+    #[test]
+    fn test_hkcr_ext() {
+        let exts = load_hkcr_exts().unwrap();
+        println!("{:#?}", exts.len());
     }
 }

@@ -435,7 +435,11 @@ impl RegItem {
         None
     }
     pub fn from_path(root: SceneRoot, path: &str) -> io::Result<RegItem> {
-        let reg_key = RegKey::predef(root.get_reg()).open_subkey(path)?;
+        let mut reg_key = RegKey::predef(root.get_reg());
+
+        if !path.is_empty() {
+            reg_key = reg_key.open_subkey(path)?;
+        }
 
         let mut values = HashMap::new();
         for (name, value) in reg_key.enum_values().flatten() {
@@ -445,8 +449,12 @@ impl RegItem {
         }
 
         let mut children: Vec<RegItem> = Vec::new();
-        for subkey_name in reg_key.enum_keys().map(|x| x.unwrap()) {
-            let subkey_path = format!("{path}\\{subkey_name}");
+        for subkey_name in reg_key.enum_keys().flat_map(|x| x.ok()) {
+            let subkey_path = if path.is_empty() {
+                subkey_name
+            } else {
+                format!("{path}\\{subkey_name}")
+            };
             let subkey_item = RegItem::from_path(root, &subkey_path)?;
             children.push(subkey_item);
         }
@@ -670,10 +678,12 @@ impl SceneType {
                 (HKCU, r"SOFTWARE\Policies\Microsoft\Edge"),
                 (HKLM, r"SOFTWARE\Policies\Microsoft\Edge"),
             ],
-            SceneType::FileExts => &[(
-                HKCU,
-                r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts",
-            )],
+            SceneType::FileExts => &[
+                (
+                    HKCU,
+                    r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts",
+                )
+            ],
         }
     }
 }

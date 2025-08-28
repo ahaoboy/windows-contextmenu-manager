@@ -429,17 +429,20 @@ fn get_ext_info(progid: &str) -> Option<MenuItemInfo> {
         .to_string();
 
     if let Some(RegItemValue::SZ(v)) = progid.values.get("")
-        && !v.trim().is_empty() {
-            name = v.to_string();
-        }
+        && !v.trim().is_empty()
+    {
+        name = v.to_string();
+    }
 
     if let Some(RegItemValue::SZ(v)) = progid
         .get_child("Shell")
-        .and_then(|s| s.get_child("Open"))
-        .and_then(|i| i.values.get("FriendlyAppName"))
-        && !v.trim().is_empty() {
-            name = v.to_string();
-        }
+        // FIXME: ignore case
+        .and_then(|s| s.get_child("Open").or(s.get_child("open")))
+        .and_then(|i| i.values.get("FriendlyAppName").or(i.values.get("")))
+        && !v.trim().is_empty()
+    {
+        name = v.to_string();
+    }
 
     Some(MenuItemInfo {
         icon,
@@ -455,9 +458,6 @@ fn get_ext_info(progid: &str) -> Option<MenuItemInfo> {
 }
 
 fn from_ext(reg: &RegItem) -> anyhow::Result<MenuItem> {
-    if reg.values.is_empty() {
-        return Err(anyhow::anyhow!("empty ext"));
-    }
     let Some(user_choice) = reg.children.iter().find(|i| i.path.ends_with("UserChoice")) else {
         return Err(anyhow::anyhow!("not found UserChoice"));
     };

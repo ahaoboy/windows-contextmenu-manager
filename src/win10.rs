@@ -149,15 +149,15 @@ fn get_ico_from_str(s: &str) -> Option<Vec<u8>> {
 }
 
 fn get_ico_from_reg(reg: &RegItem) -> Option<Vec<u8>> {
-    if let Some(RegItemValue::SZ(icon)) = reg.values.get("Icon") {
+    if let Some(RegItemValue::SZ(icon)) = reg.get_value("Icon") {
         return get_ico_from_str(icon);
     }
-    if let Some(RegItemValue::SZ(icon)) = reg.values.get("DefaultIcon") {
+    if let Some(RegItemValue::SZ(icon)) = reg.get_value("DefaultIcon") {
         return get_ico_from_str(icon);
     }
 
     if let Some(child) = reg.get_child("command")
-        && let Some(RegItemValue::SZ(k)) = child.values.get("")
+        && let Some(RegItemValue::SZ(k)) = child.get_value("")
     {
         let exe = if let Some(index) = k.find(" ") {
             &k[..index]
@@ -213,10 +213,8 @@ fn get_shell_name(reg: &RegItem) -> String {
         .unwrap_or_default()
         .to_string();
     let muiverb = reg
-        .values
-        .get("MuiVerb")
-        .or(reg.values.get("MUIVerb"))
-        .or(reg.values.get(""))
+        .get_value("MuiVerb")
+        .or(reg.get_value(""))
         .and_then(|s| {
             if let RegItemValue::SZ(s) = s
                 && s.starts_with('@')
@@ -287,9 +285,8 @@ fn get_cls_name(name: &str) -> Option<String> {
     };
     let reg = RegItem::from_path(SceneRoot::HKCR, &format!(r"CLSID\{name}")).ok()?;
     let RegItemValue::SZ(cls_name) = reg
-        .values
-        .get("LocalizedString")
-        .or(reg.values.get(""))
+        .get_value("LocalizedString")
+        .or(reg.get_value(""))
         .cloned()?
     else {
         return None;
@@ -434,7 +431,7 @@ fn get_ext_info(progid: &str, reg: &RegItem) -> Option<MenuItemInfo> {
         .unwrap_or_default()
         .to_string();
 
-    if let Some(RegItemValue::SZ(v)) = progid.values.get("")
+    if let Some(RegItemValue::SZ(v)) = progid.get_value("")
         && !v.trim().is_empty()
     {
         name = v.to_string();
@@ -444,7 +441,7 @@ fn get_ext_info(progid: &str, reg: &RegItem) -> Option<MenuItemInfo> {
         .get_child("Shell")
         // FIXME: ignore case
         .and_then(|s| s.get_child("Open").or(s.get_child("open")))
-        .and_then(|i| i.values.get("FriendlyAppName").or(i.values.get("")))
+        .and_then(|i| i.get_value("FriendlyAppName").or(i.get_value("")))
         && !v.trim().is_empty()
     {
         name = v.to_string();
@@ -468,20 +465,17 @@ fn from_ext(reg: &RegItem) -> anyhow::Result<MenuItem> {
         .children
         .iter()
         .find(|i| i.path.ends_with("UserChoice"))
-        .and_then(|i| i.values.get("Progid").or(i.values.get("ProgId")));
+        .and_then(|i| i.get_value("Progid"));
 
-
-        // https://winreg-kb.readthedocs.io/en/latest/sources/explorer-keys/Most-recently-used.html
-    let def = reg
-        .get_child("OpenWithList")
-        .and_then(|i| i.values.get("a"));
+    // https://winreg-kb.readthedocs.io/en/latest/sources/explorer-keys/Most-recently-used.html
+    let def = reg.get_child("OpenWithList").and_then(|i| i.get_value("a"));
 
     let Some(progid) = user_choice.or(def) else {
         return Err(anyhow::anyhow!("not found Progid"));
     };
 
     let info = get_ext_info(&progid.to_string(), reg).or(Some(MenuItemInfo {
-        reg:Some(reg.clone()),
+        reg: Some(reg.clone()),
         reg_txt: Some(reg.to_reg_txt()),
         full_name: progid.to_string(),
         ..Default::default()
@@ -501,7 +495,7 @@ fn from_ext(reg: &RegItem) -> anyhow::Result<MenuItem> {
 
 fn from_hkcr_ext(name: &str) -> anyhow::Result<MenuItem> {
     let ext_reg = RegItem::from_path(SceneRoot::HKCR, name)?;
-    let Some(RegItemValue::SZ(app_id)) = ext_reg.values.get("") else {
+    let Some(RegItemValue::SZ(app_id)) = ext_reg.get_value("").or(ext_reg.get_value("@")) else {
         return Err(anyhow::anyhow!("not found app_id"));
     };
 
@@ -524,17 +518,6 @@ fn load_file_exts(root: SceneRoot, path: &str) -> anyhow::Result<Vec<MenuItem>> 
     let mut v = vec![];
     for i in root.children {
         if let Ok(menu) = from_ext(&i) {
-            v.push(menu);
-        }
-    }
-
-    // HKCR
-    let root = RegKey::predef(HKEY_CLASSES_ROOT);
-    for name in root.enum_keys().flat_map(|x| x.ok()) {
-        if !name.starts_with(".") {
-            continue;
-        }
-        if let Ok(menu) = from_hkcr_ext(&name) {
             v.push(menu);
         }
     }

@@ -340,7 +340,7 @@ pub struct RegItem {
     pub path: String,
 
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub values: HashMap<String, RegItemValue>,
+    values: HashMap<String, RegItemValue>,
 
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<RegItem>,
@@ -386,9 +386,18 @@ fn to_hex_line(bytes: &[u8], hex_type: u32) -> String {
 
 impl RegItem {
     pub fn get_child(&self, name: &str) -> Option<&RegItem> {
-        self.children
-            .iter()
-            .find(|c| c.path.split('\\').next_back() == Some(name))
+        self.children.iter().find(|c| {
+            c.path.to_lowercase().split('\\').next_back() == Some(name.to_lowercase().as_str())
+        })
+    }
+
+    pub fn get_value(&self, name: &str) -> Option<&RegItemValue> {
+        self.values.get(name).or_else(|| {
+            self.values
+                .iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case(name))
+                .map(|(_, v)| v)
+        })
     }
 
     pub fn get_guid(&self) -> Option<String> {
@@ -678,12 +687,10 @@ impl SceneType {
                 (HKCU, r"SOFTWARE\Policies\Microsoft\Edge"),
                 (HKLM, r"SOFTWARE\Policies\Microsoft\Edge"),
             ],
-            SceneType::FileExts => &[
-                (
-                    HKCU,
-                    r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts",
-                )
-            ],
+            SceneType::FileExts => &[(
+                HKCU,
+                r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts",
+            )],
         }
     }
 }

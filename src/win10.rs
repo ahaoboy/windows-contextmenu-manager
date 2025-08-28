@@ -80,11 +80,18 @@ fn load_all() -> anyhow::Result<Vec<MenuItem>, anyhow::Error> {
                     v.extend(items);
                 }
             }
+            SceneType::FileExts => {
+                for (root, i) in scene.registry_path() {
+                    let items = load_file_exts(*root, i).unwrap_or_default();
+                    v.extend(items);
+                }
+            }
         }
     }
     set_backup(&v);
     Ok(v)
 }
+
 #[cached]
 fn get_system_directory() -> String {
     use std::ffi::OsString;
@@ -410,6 +417,80 @@ fn load_shellex(root: SceneRoot, path: &str, guid: &GuidManager) -> anyhow::Resu
     Ok(v)
 }
 
+fn get_ext_info(progid: &str) -> Option<MenuItemInfo> {
+    let progid = RegItem::from_path(SceneRoot::HKCR, progid).ok()?;
+    let icon = get_ico_from_reg(&progid);
+
+    let mut name = progid
+        .path
+        .split('\\')
+        .next_back()
+        .unwrap_or_default()
+        .to_string();
+
+    if let Some(RegItemValue::SZ(v)) = progid.values.get("")
+        && !v.trim().is_empty() {
+            name = v.to_string();
+        }
+
+    if let Some(RegItemValue::SZ(v)) = progid
+        .get_child("Shell")
+        .and_then(|s| s.get_child("Open"))
+        .and_then(|i| i.values.get("FriendlyAppName"))
+        && !v.trim().is_empty() {
+            name = v.to_string();
+        }
+
+    Some(MenuItemInfo {
+        icon,
+        publisher_display_name: String::new(),
+        description: String::new(),
+        types: vec![],
+        install_path: String::new(),
+        family_name: String::new(),
+        full_name: name,
+        reg: Some(progid.clone()),
+        reg_txt: Some(progid.to_reg_txt()),
+    })
+}
+
+fn from_ext(reg: &RegItem) -> anyhow::Result<MenuItem> {
+    if reg.values.is_empty() {
+        return Err(anyhow::anyhow!("empty ext"));
+    }
+    let Some(user_choice) = reg.children.iter().find(|i| i.path.ends_with("UserChoice")) else {
+        return Err(anyhow::anyhow!("not found UserChoice"));
+    };
+
+    let Some(progid) = user_choice.values.get("Progid") else {
+        return Err(anyhow::anyhow!("not found Progid"));
+    };
+
+    let info = get_ext_info(&progid.to_string());
+    let item = MenuItem {
+        id: reg.path.clone(),
+        name: info
+            .clone()
+            .map(|i| i.full_name)
+            .unwrap_or(progid.to_string()),
+        enabled: true,
+        info,
+    };
+
+    Ok(item)
+}
+
+fn load_file_exts(root: SceneRoot, path: &str) -> anyhow::Result<Vec<MenuItem>> {
+    let root = RegItem::from_path(root, path)?;
+    let mut v = vec![];
+    for i in root.children {
+        if let Ok(menu) = from_ext(&i) {
+            v.push(menu);
+        }
+    }
+    Ok(v)
+}
+
 pub fn list() -> Vec<MenuItem> {
     let v = load_all().unwrap_or_default();
     let mut backup = get_backup();
@@ -451,6 +532,8 @@ pub fn enable(id: &str) -> Result<(), anyhow::Error> {
 
 #[cfg(test)]
 mod test {
+    use crate::{SceneRoot, win10::load_file_exts};
+
     #[test]
     fn test_get_dll_txt() {
         for i in [
@@ -480,5 +563,15 @@ mod test {
             let ico = super::get_ico_from_str(i);
             assert!(ico.is_some())
         }
+    }
+
+    #[test]
+    fn test_ext() {
+        let exts = load_file_exts(
+            SceneRoot::HKCU,
+            r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts",
+        );
+
+        println!("{:#?}", exts.iter().len());
     }
 }

@@ -232,6 +232,7 @@ pub enum RegItemValue {
     MultiSz(String),
     QWORD(u64),
     BINARY(Vec<u8>),
+    None(Vec<u8>),
 }
 
 fn parse_dword(value: &RegValue) -> Option<u32> {
@@ -263,7 +264,7 @@ impl TryFrom<RegValue> for RegItemValue {
             REG_DWORD => RegItemValue::DWORD(parse_dword(&value).expect("parse_dword error")),
             REG_QWORD => RegItemValue::QWORD(parse_qword(&value).expect("parse_qword error")),
             REG_BINARY => RegItemValue::BINARY(value.bytes),
-            REG_NONE => todo!(),
+            REG_NONE => RegItemValue::None(value.bytes),
             REG_DWORD_BIG_ENDIAN => todo!(),
             REG_LINK => todo!(),
             REG_RESOURCE_LIST => todo!(),
@@ -295,6 +296,13 @@ impl RegItemValue {
                 };
                 key.set_raw_value(name, &data)
             }
+            RegItemValue::None(bytes) => {
+                let data = RegValue {
+                    vtype: REG_NONE,
+                    bytes: bytes.to_vec(),
+                };
+                key.set_raw_value(name, &data)
+            }
         };
     }
 }
@@ -313,6 +321,7 @@ impl Display for RegItemValue {
             .expect("ExpandSz format error"),
             RegItemValue::MultiSz(v) => v.to_string(),
             RegItemValue::QWORD(v) => v.to_string(),
+            RegItemValue::None(_) => "REG_NONE".to_string(),
             RegItemValue::BINARY(bytes) => {
                 let hex: Vec<_> = bytes.iter().map(|b| format!("{b:02x}")).collect();
                 format!("0x{}", hex.join(""))
@@ -506,6 +515,14 @@ impl RegItem {
                     RegItemValue::ExpandSz(v) => escape_str(&to_hex_line(v, 2)),
                     RegItemValue::MultiSz(v) => escape_str(v),
                     RegItemValue::BINARY(v) => to_hex_line(v, 0),
+                    RegItemValue::None(v) => {
+                        let hex = v
+                            .iter()
+                            .map(|b| format!("{b:02x}"))
+                            .collect::<Vec<_>>()
+                            .join(",");
+                        format!("hex(0):{hex}")
+                    }
                 };
                 let line = format!("{key}={v}\n");
                 out.push_str(&line);
@@ -605,6 +622,7 @@ pub(crate) enum SceneType {
     Shell,
     ShellEx,
     Edge,
+    FileExts,
 }
 
 impl SceneType {
@@ -652,6 +670,10 @@ impl SceneType {
                 (HKCU, r"SOFTWARE\Policies\Microsoft\Edge"),
                 (HKLM, r"SOFTWARE\Policies\Microsoft\Edge"),
             ],
+            SceneType::FileExts => &[(
+                HKCU,
+                r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts",
+            )],
         }
     }
 }

@@ -464,19 +464,28 @@ fn get_ext_info(progid: &str, reg: &RegItem) -> Option<MenuItemInfo> {
 }
 
 fn from_ext(reg: &RegItem) -> anyhow::Result<MenuItem> {
-    let Some(user_choice) = reg.children.iter().find(|i| i.path.ends_with("UserChoice")) else {
-        return Err(anyhow::anyhow!("not found UserChoice"));
-    };
+    let user_choice = reg
+        .children
+        .iter()
+        .find(|i| i.path.ends_with("UserChoice"))
+        .and_then(|i| i.values.get("Progid").or(i.values.get("ProgId")));
 
-    let Some(progid) = user_choice
-        .values
-        .get("Progid")
-        .or(user_choice.values.get("ProgId"))
-    else {
+
+        // https://winreg-kb.readthedocs.io/en/latest/sources/explorer-keys/Most-recently-used.html
+    let def = reg
+        .get_child("OpenWithList")
+        .and_then(|i| i.values.get("a"));
+
+    let Some(progid) = user_choice.or(def) else {
         return Err(anyhow::anyhow!("not found Progid"));
     };
 
-    let info = get_ext_info(&progid.to_string(), reg);
+    let info = get_ext_info(&progid.to_string(), reg).or(Some(MenuItemInfo {
+        reg:Some(reg.clone()),
+        reg_txt: Some(reg.to_reg_txt()),
+        full_name: progid.to_string(),
+        ..Default::default()
+    }));
     let item = MenuItem {
         id: reg.path.clone(),
         name: info

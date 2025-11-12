@@ -12,6 +12,8 @@ use cached::proc_macro::cached;
 use std::collections::HashSet;
 use strum::IntoEnumIterator;
 use windows::Win32::System::SystemInformation::GetWindowsDirectoryW;
+use winreg::RegKey;
+use winreg::enums::HKEY_CLASSES_ROOT;
 
 fn get_backup() -> Vec<MenuItem> {
     let Some(d) = dirs::config_local_dir() else {
@@ -80,11 +82,22 @@ fn load_all() -> anyhow::Result<Vec<MenuItem>, anyhow::Error> {
                     v.extend(items);
                 }
             }
+            SceneType::FileExts => {
+                for (root, i) in scene.registry_path() {
+                    let items = load_file_exts(*root, i).unwrap_or_default();
+                    v.extend(items);
+                }
+            }
         }
     }
+    if let Ok(items) = load_hkcr_exts() {
+        v.extend(items);
+    }
+
     set_backup(&v);
     Ok(v)
 }
+
 #[cached]
 fn get_system_directory() -> String {
     use std::ffi::OsString;
@@ -136,15 +149,15 @@ fn get_ico_from_str(s: &str) -> Option<Vec<u8>> {
 }
 
 fn get_ico_from_reg(reg: &RegItem) -> Option<Vec<u8>> {
-    if let Some(RegItemValue::SZ(icon)) = reg.values.get("Icon") {
+    if let Some(RegItemValue::SZ(icon)) = reg.get_value("Icon") {
         return get_ico_from_str(icon);
     }
-    if let Some(RegItemValue::SZ(icon)) = reg.values.get("DefaultIcon") {
+    if let Some(RegItemValue::SZ(icon)) = reg.get_value("DefaultIcon") {
         return get_ico_from_str(icon);
     }
 
     if let Some(child) = reg.get_child("command")
-        && let Some(RegItemValue::SZ(k)) = child.values.get("")
+        && let Some(RegItemValue::SZ(k)) = child.get_value("")
     {
         let exe = if let Some(index) = k.find(" ") {
             &k[..index]
@@ -200,10 +213,8 @@ fn get_shell_name(reg: &RegItem) -> String {
         .unwrap_or_default()
         .to_string();
     let muiverb = reg
-        .values
-        .get("MuiVerb")
-        .or(reg.values.get("MUIVerb"))
-        .or(reg.values.get(""))
+        .get_value("MuiVerb")
+        .or(reg.get_value(""))
         .and_then(|s| {
             if let RegItemValue::SZ(s) = s
                 && s.starts_with('@')
@@ -274,9 +285,8 @@ fn get_cls_name(name: &str) -> Option<String> {
     };
     let reg = RegItem::from_path(SceneRoot::HKCR, &format!(r"CLSID\{name}")).ok()?;
     let RegItemValue::SZ(cls_name) = reg
-        .values
-        .get("LocalizedString")
-        .or(reg.values.get(""))
+        .get_value("LocalizedString")
+        .or(reg.get_value(""))
         .cloned()?
     else {
         return None;
@@ -410,6 +420,126 @@ fn load_shellex(root: SceneRoot, path: &str, guid: &GuidManager) -> anyhow::Resu
     Ok(v)
 }
 
+fn get_ext_info(progid: &str, reg: &RegItem) -> Option<MenuItemInfo> {
+    let progid = RegItem::from_path(SceneRoot::HKCR, progid).ok()?;
+    let icon = get_ico_from_reg(&progid);
+
+    let mut name = progid
+        .path
+        .split('\\')
+        .next_back()
+        .unwrap_or_default()
+        .to_string();
+
+    if let Some(RegItemValue::SZ(v)) = progid.get_value("")
+        && !v.trim().is_empty()
+    {
+        name = v.to_string();
+    }
+
+    if let Some(RegItemValue::SZ(v)) = progid
+        .get_child("Shell")
+        // FIXME: ignore case
+        .and_then(|s| s.get_child("Open").or(s.get_child("open")))
+        .and_then(|i| i.get_value("FriendlyAppName").or(i.get_value("")))
+        && !v.trim().is_empty()
+    {
+        name = v.to_string();
+    }
+
+    Some(MenuItemInfo {
+        icon,
+        publisher_display_name: String::new(),
+        description: String::new(),
+        types: vec![],
+        install_path: String::new(),
+        family_name: String::new(),
+        full_name: name,
+        reg: Some(reg.clone()),
+        reg_txt: Some(reg.to_reg_txt()),
+    })
+}
+
+fn from_ext(reg: &RegItem) -> anyhow::Result<MenuItem> {
+    let user_choice = reg
+        .children
+        .iter()
+        .find(|i| i.path.ends_with("UserChoice"))
+        .and_then(|i| i.get_value("Progid"));
+
+    // https://winreg-kb.readthedocs.io/en/latest/sources/explorer-keys/Most-recently-used.html
+    let def = reg.get_child("OpenWithList").and_then(|i| i.get_value("a"));
+
+    let Some(progid) = user_choice.or(def) else {
+        return Err(anyhow::anyhow!("not found Progid"));
+    };
+
+    let info = get_ext_info(&progid.to_string(), reg).or(Some(MenuItemInfo {
+        reg: Some(reg.clone()),
+        reg_txt: Some(reg.to_reg_txt()),
+        full_name: progid.to_string(),
+        ..Default::default()
+    }));
+    let item = MenuItem {
+        id: reg.path.clone(),
+        name: info
+            .clone()
+            .map(|i| i.full_name)
+            .unwrap_or(progid.to_string()),
+        enabled: true,
+        info,
+    };
+
+    Ok(item)
+}
+
+fn from_hkcr_ext(name: &str) -> anyhow::Result<MenuItem> {
+    let ext_reg = RegItem::from_path(SceneRoot::HKCR, name)?;
+    let Some(RegItemValue::SZ(app_id)) = ext_reg.get_value("").or(ext_reg.get_value("@")) else {
+        return Err(anyhow::anyhow!("not found app_id"));
+    };
+
+    let info = get_ext_info(app_id, &ext_reg);
+    let item = MenuItem {
+        id: ext_reg.path.clone(),
+        name: info
+            .clone()
+            .map(|i| i.full_name)
+            .unwrap_or(app_id.to_string()),
+        enabled: true,
+        info,
+    };
+
+    Ok(item)
+}
+
+fn load_file_exts(root: SceneRoot, path: &str) -> anyhow::Result<Vec<MenuItem>> {
+    let root = RegItem::from_path(root, path)?;
+    let mut v = vec![];
+    for i in root.children {
+        if let Ok(menu) = from_ext(&i) {
+            v.push(menu);
+        }
+    }
+
+    Ok(v)
+}
+
+fn load_hkcr_exts() -> anyhow::Result<Vec<MenuItem>> {
+    let mut v = vec![];
+    let root = RegKey::predef(HKEY_CLASSES_ROOT);
+    for name in root.enum_keys().flat_map(|x| x.ok()) {
+        if !name.starts_with(".") {
+            continue;
+        }
+        if let Ok(menu) = from_hkcr_ext(&name) {
+            v.push(menu);
+        }
+    }
+
+    Ok(v)
+}
+
 pub fn list() -> Vec<MenuItem> {
     let v = load_all().unwrap_or_default();
     let mut backup = get_backup();
@@ -451,6 +581,11 @@ pub fn enable(id: &str) -> Result<(), anyhow::Error> {
 
 #[cfg(test)]
 mod test {
+    use crate::{
+        SceneRoot,
+        win10::{load_file_exts, load_hkcr_exts},
+    };
+
     #[test]
     fn test_get_dll_txt() {
         for i in [
@@ -480,5 +615,22 @@ mod test {
             let ico = super::get_ico_from_str(i);
             assert!(ico.is_some())
         }
+    }
+
+    #[test]
+    fn test_ext() {
+        let exts = load_file_exts(
+            SceneRoot::HKCU,
+            r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts",
+        )
+        .unwrap();
+
+        println!("{:#?}", exts.len());
+    }
+
+    #[test]
+    fn test_hkcr_ext() {
+        let exts = load_hkcr_exts().unwrap();
+        println!("{:#?}", exts.len());
     }
 }

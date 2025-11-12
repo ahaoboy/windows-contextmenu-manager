@@ -232,6 +232,7 @@ pub enum RegItemValue {
     MultiSz(String),
     QWORD(u64),
     BINARY(Vec<u8>),
+    None(Vec<u8>),
 }
 
 fn parse_dword(value: &RegValue) -> Option<u32> {
@@ -263,7 +264,7 @@ impl TryFrom<RegValue> for RegItemValue {
             REG_DWORD => RegItemValue::DWORD(parse_dword(&value).expect("parse_dword error")),
             REG_QWORD => RegItemValue::QWORD(parse_qword(&value).expect("parse_qword error")),
             REG_BINARY => RegItemValue::BINARY(value.bytes),
-            REG_NONE => todo!(),
+            REG_NONE => RegItemValue::None(value.bytes),
             REG_DWORD_BIG_ENDIAN => todo!(),
             REG_LINK => todo!(),
             REG_RESOURCE_LIST => todo!(),
@@ -295,6 +296,13 @@ impl RegItemValue {
                 };
                 key.set_raw_value(name, &data)
             }
+            RegItemValue::None(bytes) => {
+                let data = RegValue {
+                    vtype: REG_NONE,
+                    bytes: bytes.to_vec(),
+                };
+                key.set_raw_value(name, &data)
+            }
         };
     }
 }
@@ -313,6 +321,7 @@ impl Display for RegItemValue {
             .expect("ExpandSz format error"),
             RegItemValue::MultiSz(v) => v.to_string(),
             RegItemValue::QWORD(v) => v.to_string(),
+            RegItemValue::None(_) => "REG_NONE".to_string(),
             RegItemValue::BINARY(bytes) => {
                 let hex: Vec<_> = bytes.iter().map(|b| format!("{b:02x}")).collect();
                 format!("0x{}", hex.join(""))
@@ -331,7 +340,7 @@ pub struct RegItem {
     pub path: String,
 
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub values: HashMap<String, RegItemValue>,
+    values: HashMap<String, RegItemValue>,
 
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<RegItem>,
@@ -377,9 +386,18 @@ fn to_hex_line(bytes: &[u8], hex_type: u32) -> String {
 
 impl RegItem {
     pub fn get_child(&self, name: &str) -> Option<&RegItem> {
-        self.children
-            .iter()
-            .find(|c| c.path.split('\\').next_back() == Some(name))
+        self.children.iter().find(|c| {
+            c.path.to_lowercase().split('\\').next_back() == Some(name.to_lowercase().as_str())
+        })
+    }
+
+    pub fn get_value(&self, name: &str) -> Option<&RegItemValue> {
+        self.values.get(name).or_else(|| {
+            self.values
+                .iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case(name))
+                .map(|(_, v)| v)
+        })
     }
 
     pub fn get_guid(&self) -> Option<String> {
@@ -426,7 +444,11 @@ impl RegItem {
         None
     }
     pub fn from_path(root: SceneRoot, path: &str) -> io::Result<RegItem> {
-        let reg_key = RegKey::predef(root.get_reg()).open_subkey(path)?;
+        let mut reg_key = RegKey::predef(root.get_reg());
+
+        if !path.is_empty() {
+            reg_key = reg_key.open_subkey(path)?;
+        }
 
         let mut values = HashMap::new();
         for (name, value) in reg_key.enum_values().flatten() {
@@ -436,8 +458,12 @@ impl RegItem {
         }
 
         let mut children: Vec<RegItem> = Vec::new();
-        for subkey_name in reg_key.enum_keys().map(|x| x.unwrap()) {
-            let subkey_path = format!("{path}\\{subkey_name}");
+        for subkey_name in reg_key.enum_keys().flat_map(|x| x.ok()) {
+            let subkey_path = if path.is_empty() {
+                subkey_name
+            } else {
+                format!("{path}\\{subkey_name}")
+            };
             let subkey_item = RegItem::from_path(root, &subkey_path)?;
             children.push(subkey_item);
         }
@@ -506,6 +532,14 @@ impl RegItem {
                     RegItemValue::ExpandSz(v) => escape_str(&to_hex_line(v, 2)),
                     RegItemValue::MultiSz(v) => escape_str(v),
                     RegItemValue::BINARY(v) => to_hex_line(v, 0),
+                    RegItemValue::None(v) => {
+                        let hex = v
+                            .iter()
+                            .map(|b| format!("{b:02x}"))
+                            .collect::<Vec<_>>()
+                            .join(",");
+                        format!("hex(0):{hex}")
+                    }
                 };
                 let line = format!("{key}={v}\n");
                 out.push_str(&line);
@@ -605,6 +639,7 @@ pub(crate) enum SceneType {
     Shell,
     ShellEx,
     Edge,
+    FileExts,
 }
 
 impl SceneType {
@@ -652,6 +687,10 @@ impl SceneType {
                 (HKCU, r"SOFTWARE\Policies\Microsoft\Edge"),
                 (HKLM, r"SOFTWARE\Policies\Microsoft\Edge"),
             ],
+            SceneType::FileExts => &[(
+                HKCU,
+                r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts",
+            )],
         }
     }
 }
